@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
+import useAuthStore from "../store/authStore";
 import {
   ChevronLeft,
   Clock,
@@ -36,386 +37,118 @@ import {
   Cell,
 } from "recharts";
 
-// Mock machine data
-const mockMachine = {
-  id: 2,
-  name: "CNC Machine CNC-305",
-  serialNumber: "CNC305-2019-X47Z",
-  model: "CNC-3000 Series",
-  manufacturer: "Precision Dynamics Inc.",
-  department: "Manufacturing",
-  location: "Building A, Floor 2, Section 3",
-  status: "maintenance",
-  purchaseDate: "2019-03-22",
-  purchasePrice: 120000,
-  vendor: "Industrial Machines USA",
-  warrantyExpiration: "2024-03-22",
-  lastMaintenance: "2024-01-20",
-  nextMaintenance: "2024-04-20",
-  maintenanceSchedule: ["quarterly", "annual"],
-  totalRepairCost: 18700,
-  repairCount: 12,
-  healthScore: 78,
+// Default initial machine state
+const defaultMachine = {
+  id: 0,
+  name: "Loading...",
+  serialNumber: "---",
+  model: "---",
+  manufacturer: "---",
+  department: "---",
+  location: "---",
+  status: "operational",
+  purchaseDate: new Date().toISOString(),
+  purchasePrice: 0,
+  vendor: "---",
+  warrantyExpiration: new Date().toISOString(),
+  lastMaintenance: new Date().toISOString(),
+  nextMaintenance: new Date().toISOString(),
+  maintenanceSchedule: ["quarterly"],
+  totalRepairCost: 0,
+  repairCount: 0,
+  healthScore: 100,
   specifications: [
-    { name: "Power", value: "220V, 30A" },
-    { name: "Weight", value: "2,500 kg" },
-    { name: "Dimensions", value: "240 x 180 x 190 cm" },
-    { name: "Max RPM", value: "12,000" },
-    { name: "Control System", value: "FANUC 31i-B5" },
+    { name: "Power", value: "Standard Industrial" },
+    { name: "Control System", value: "Integrated PLC" },
   ],
-  temperatureData: [
-    { time: "08:00", temp: 28 },
-    { time: "10:00", temp: 32 },
-    { time: "12:00", temp: 38 },
-    { time: "14:00", temp: 42 },
-    { time: "16:00", temp: 40 },
-    { time: "18:00", temp: 36 },
-    { time: "20:00", temp: 33 },
-  ],
-  repairHistory: [
-    {
-      id: 1,
-      date: "2023-12-15",
-      type: "Repair",
-      issue: "Z-axis alignment issues",
-      technician: "John Smith",
-      cost: 2850,
-      parts: ["Z-axis drive belt", "Linear bearings", "Guide rails"],
-      resolution: "Replaced worn guide rails and realigned Z-axis",
-      storeItems: ["BLT-ZAXIS-001", "BRG-LIN-205", "RL-GUIDE-300"],
-    },
-    {
-      id: 2,
-      date: "2023-09-05",
-      type: "Maintenance",
-      issue: "Regular quarterly maintenance",
-      technician: "Sarah Johnson",
-      cost: 1200,
-      parts: ["Lubrication oil", "Filters", "Coolant"],
-      resolution: "Completed standard maintenance checklist",
-      storeItems: ["OIL-LUB-50", "FIL-HVAC-02", "COOL-ANTI-5L"],
-    },
-    {
-      id: 3,
-      date: "2023-06-20",
-      type: "Repair",
-      issue: "Control panel errors",
-      technician: "Mike Anderson",
-      cost: 3450,
-      parts: ["Control board", "Display unit"],
-      resolution: "Replaced faulty control board and updated firmware",
-      storeItems: ["CTRL-BRD-F31", "DISP-UNIT-15"],
-    },
-    {
-      id: 4,
-      date: "2023-03-10",
-      type: "Maintenance",
-      issue: "Regular quarterly maintenance",
-      technician: "Sarah Johnson",
-      cost: 950,
-      parts: ["Lubrication oil", "Filters"],
-      resolution: "Completed standard maintenance checklist",
-      storeItems: ["OIL-LUB-50", "FIL-HVAC-02"],
-    },
-    {
-      id: 5,
-      date: "2022-11-08",
-      type: "Repair",
-      issue: "Spindle overheating",
-      technician: "John Smith",
-      cost: 4200,
-      parts: ["Spindle assembly", "Coolant pump"],
-      resolution: "Replaced damaged spindle and upgraded cooling system",
-      storeItems: ["SPINDLE-ASM-05", "PUMP-COOL-200"],
-    },
-  ],
-  documents: [
-    {
-      id: 1,
-      name: "CNC-305 User Manual.pdf",
-      type: "PDF",
-      size: "12.5 MB",
-      uploadedBy: "Admin",
-      date: "2019-03-25",
-    },
-    {
-      id: 2,
-      name: "Maintenance Checklist.doc",
-      type: "DOC",
-      size: "2.3 MB",
-      uploadedBy: "Sarah Johnson",
-      date: "2019-04-10",
-    },
-    {
-      id: 3,
-      name: "Warranty Information.pdf",
-      type: "PDF",
-      size: "1.8 MB",
-      uploadedBy: "Admin",
-      date: "2019-03-25",
-    },
-    {
-      id: 4,
-      name: "Dec 2023 Repair Report.pdf",
-      type: "PDF",
-      size: "4.2 MB",
-      uploadedBy: "John Smith",
-      date: "2023-12-18",
-    },
-    {
-      id: 5,
-      name: "Technical Specifications.xlsx",
-      type: "XLSX",
-      size: "3.7 MB",
-      uploadedBy: "Mike Anderson",
-      date: "2019-05-15",
-    },
-  ],
-  maintenanceTasks: [
-    {
-      id: 1,
-      title: "Quarterly Maintenance Q2 2024",
-      dueDate: "2024-04-20",
-      status: "scheduled",
-      assignedTo: "Sarah Johnson",
-      type: "Quarterly",
-    },
-    {
-      id: 2,
-      title: "Annual Safety Inspection",
-      dueDate: "2024-03-22",
-      status: "scheduled",
-      assignedTo: "External Inspector",
-      type: "Annual",
-    },
-    {
-      id: 3,
-      title: "Quarterly Maintenance Q1 2024",
-      dueDate: "2024-01-20",
-      status: "completed",
-      assignedTo: "Sarah Johnson",
-      type: "Quarterly",
-      completedDate: "2024-01-20",
-    },
-    {
-      id: 4,
-      title: "Z-axis Alignment Check",
-      dueDate: "2024-02-15",
-      status: "completed",
-      assignedTo: "John Smith",
-      type: "Special",
-      completedDate: "2024-02-14",
-    },
-  ],
-  yearlyRepairCosts: [
-    { year: 2019, cost: 1450 },
-    { year: 2020, cost: 2800 },
-    { year: 2021, cost: 3600 },
-    { year: 2022, cost: 5700 },
-    { year: 2023, cost: 4800 },
-    { year: 2024, cost: 350 },
-  ],
-  storePurchases: [
-    {
-      id: 1,
-      purchaseOrder: "PO-2023-0456",
-      date: "2023-12-10",
-      vendor: "Industrial Parts Supply",
-      totalAmount: 3250,
-      status: "delivered",
-      items: [
-        {
-          id: "BLT-ZAXIS-001",
-          name: "Z-Axis Drive Belt",
-          quantity: 2,
-          unitPrice: 450,
-          totalPrice: 900,
-          category: "Mechanical",
-          usedInRepair: "2023-12-15",
-        },
-        {
-          id: "BRG-LIN-205",
-          name: "Linear Bearing Set",
-          quantity: 1,
-          unitPrice: 850,
-          totalPrice: 850,
-          category: "Mechanical",
-          usedInRepair: "2023-12-15",
-        },
-        {
-          id: "RL-GUIDE-300",
-          name: "Guide Rail Assembly",
-          quantity: 1,
-          unitPrice: 1500,
-          totalPrice: 1500,
-          category: "Mechanical",
-          usedInRepair: "2023-12-15",
-        },
-      ],
-    },
-    {
-      id: 2,
-      purchaseOrder: "PO-2023-0389",
-      date: "2023-08-28",
-      vendor: "Fluid Systems Corp",
-      totalAmount: 1850,
-      status: "delivered",
-      items: [
-        {
-          id: "OIL-LUB-50",
-          name: "High-Temp Lubrication Oil",
-          quantity: 4,
-          unitPrice: 75,
-          totalPrice: 300,
-          category: "Consumables",
-          usedInRepair: "2023-09-05",
-        },
-        {
-          id: "FIL-HVAC-02",
-          name: "HVAC Filter Set",
-          quantity: 2,
-          unitPrice: 125,
-          totalPrice: 250,
-          category: "Consumables",
-          usedInRepair: "2023-09-05",
-        },
-        {
-          id: "COOL-ANTI-5L",
-          name: "Anti-freeze Coolant",
-          quantity: 3,
-          unitPrice: 65,
-          totalPrice: 195,
-          category: "Consumables",
-        },
-        {
-          id: "PUMP-COOL-200",
-          name: "Coolant Pump Assembly",
-          quantity: 1,
-          unitPrice: 1105,
-          totalPrice: 1105,
-          category: "Electrical",
-          usedInRepair: "2022-11-08",
-        },
-      ],
-    },
-    {
-      id: 3,
-      purchaseOrder: "PO-2023-0251",
-      date: "2023-05-15",
-      vendor: "Electro Controls Ltd",
-      totalAmount: 2950,
-      status: "delivered",
-      items: [
-        {
-          id: "CTRL-BRD-F31",
-          name: "FANUC Control Board",
-          quantity: 1,
-          unitPrice: 1850,
-          totalPrice: 1850,
-          category: "Electronics",
-          usedInRepair: "2023-06-20",
-        },
-        {
-          id: "DISP-UNIT-15",
-          name: "15\" Display Unit",
-          quantity: 1,
-          unitPrice: 1100,
-          totalPrice: 1100,
-          category: "Electronics",
-          usedInRepair: "2023-06-20",
-        },
-      ],
-    },
-  ],
-  fixedAssets: [
-    {
-      id: "FA-001",
-      name: "CNC Machine CNC-305",
-      tag: "CNC305-2019-X47Z",
-      category: "Manufacturing Equipment",
-      purchaseDate: "2019-03-22",
-      purchasePrice: 120000,
-      depreciation: 36000,
-      currentValue: 84000,
-      location: "Building A, Floor 2, Section 3",
-      status: "active",
-    },
-    {
-      id: "FA-002",
-      name: "Cooling System Unit",
-      tag: "COOL-SYS-2019-A1",
-      category: "Support Equipment",
-      purchaseDate: "2019-04-10",
-      purchasePrice: 8500,
-      depreciation: 2550,
-      currentValue: 5950,
-      location: "Building A, Floor 2, Section 3",
-      status: "active",
-    },
-    {
-      id: "FA-003",
-      name: "Dust Collection System",
-      tag: "DUST-COL-2019-B2",
-      category: "Environmental Control",
-      purchaseDate: "2019-05-15",
-      purchasePrice: 6200,
-      depreciation: 1860,
-      currentValue: 4340,
-      location: "Building A, Floor 2, Section 3",
-      status: "active",
-    },
-  ],
-  itemUsageHistory: [
-    {
-      id: "BLT-ZAXIS-001",
-      name: "Z-Axis Drive Belt",
-      category: "Mechanical",
-      totalPurchased: 5,
-      totalUsed: 3,
-      currentStock: 2,
-      lastUsed: "2023-12-15",
-      avgLifespan: "6 months",
-      totalCost: 2250,
-    },
-    {
-      id: "BRG-LIN-205",
-      name: "Linear Bearing Set",
-      category: "Mechanical",
-      totalPurchased: 3,
-      totalUsed: 2,
-      currentStock: 1,
-      lastUsed: "2023-12-15",
-      avgLifespan: "12 months",
-      totalCost: 2550,
-    },
-    {
-      id: "OIL-LUB-50",
-      name: "High-Temp Lubrication Oil",
-      category: "Consumables",
-      totalPurchased: 12,
-      totalUsed: 8,
-      currentStock: 4,
-      lastUsed: "2023-09-05",
-      avgLifespan: "3 months",
-      totalCost: 900,
-    },
-    {
-      id: "CTRL-BRD-F31",
-      name: "FANUC Control Board",
-      category: "Electronics",
-      totalPurchased: 2,
-      totalUsed: 1,
-      currentStock: 1,
-      lastUsed: "2023-06-20",
-      avgLifespan: "24 months",
-      totalCost: 3700,
-    },
-  ],
+  temperatureData: [] as { time: string; temp: number }[],
+  repairHistory: [] as any[],
+  maintenanceTasks: [] as any[],
+  storePurchases: [] as any[],
+  itemUsageHistory: [] as any[],
+  documents: [] as any[],
 };
-
 const MachineDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const [machine] = useState(mockMachine);
+  const token = useAuthStore((state) => state.token);
+  const [machine, setMachine] = useState(defaultMachine);
+
+  useEffect(() => {
+    if (!id || !token) return;
+
+    Promise.all([
+      fetch(`http://localhost:5000/api/machines/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }).then((res) => res.json()),
+      fetch(`http://localhost:5000/api/reports/machines/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }).then((res) => res.json()).catch(() => ({ success: false })),
+    ])
+      .then(([mResult, repResult]) => {
+        let baseData: any = {};
+        if (mResult && mResult.success && mResult.data) {
+          baseData = mResult.data;
+        }
+
+        let extraData: any = {};
+        if (repResult && repResult.success && repResult.data) {
+          const rep = repResult.data;
+          const breakdowns = (rep.breakdowns || []).map((b: any) => ({
+            id: b.id,
+            date: b.breakdown_date || b.created_at,
+            type: b.failure_type || "Breakdown",
+            issue: b.root_cause || b.description || "Machine failure",
+            technician: b.assigned_to || "Maintenance Tech",
+            cost: Number(b.downtime_cost || 0),
+            parts: [],
+            resolution: b.action_taken || "Resolved",
+            storeItems: [],
+          }));
+
+          const tasks = (rep.tasks || []).map((t: any) => ({
+            id: t.id,
+            title: t.title,
+            type: t.type || "Maintenance",
+            dueDate: t.due_date || t.dueDate,
+            completedDate: t.completed_date || t.completedDate,
+            status: t.status,
+            assignedTo: t.assigned_to || t.assignedTo || "Unassigned",
+            priority: t.priority || "Medium",
+            estimatedDuration: t.estimated_duration || "1 hour",
+          }));
+
+          const dailyLogs = (rep.dailyLogs || []).map((l: any) => ({
+            time: l.log_date ? new Date(l.log_date).toLocaleDateString([], { month: "short", day: "numeric" }) : "Log",
+            temp: Number(l.temperature || 35),
+          }));
+
+          extraData = {
+            repairHistory: breakdowns,
+            maintenanceTasks: tasks,
+            temperatureData: dailyLogs.length > 0 ? dailyLogs : [
+              { time: "08:00", temp: 28 },
+              { time: "12:00", temp: 32 },
+              { time: "16:00", temp: 30 },
+            ],
+          };
+        }
+
+        setMachine((prev) => ({
+          ...prev,
+          ...baseData,
+          ...extraData,
+          maintenanceSchedule: baseData.maintenanceSchedule || prev.maintenanceSchedule || [],
+          specifications: baseData.specifications || prev.specifications || [],
+          storePurchases: prev.storePurchases || [],
+          itemUsageHistory: prev.itemUsageHistory || [],
+          documents: prev.documents || [],
+        }));
+      })
+      .catch((error) => {
+        console.error("Machine details API error:", error);
+      });
+  }, [id, token]);
+
   const [activeTab, setActiveTab] = useState("overview");
   const [sortColumn, setSortColumn] = useState("date");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
@@ -433,7 +166,7 @@ const MachineDetails: React.FC = () => {
   };
 
   // Sort repair history
-  const sortedRepairHistory = [...machine.repairHistory].sort((a, b) => {
+  const sortedRepairHistory = [...(machine.repairHistory || [])].sort((a, b) => {
     const aValue = a[sortColumn as keyof typeof a];
     const bValue = b[sortColumn as keyof typeof b];
 
@@ -452,16 +185,16 @@ const MachineDetails: React.FC = () => {
 
   // Calculate total repair cost percentage compared to purchase price
   const repairCostPercentage =
-    (machine.totalRepairCost / machine.purchasePrice) * 100;
+    machine.purchasePrice ? (machine.totalRepairCost / machine.purchasePrice) * 100 : 0;
 
   // Calculate total store purchases cost
-  const totalStorePurchases = machine.storePurchases.reduce(
+  const totalStorePurchases = (machine.storePurchases || []).reduce(
     (sum, purchase) => sum + purchase.totalAmount,
     0
   );
 
   // Calculate category distribution for store items
-  const categoryData = machine.storePurchases
+  const categoryData = (machine.storePurchases || [])
     .flatMap((purchase) =>
       purchase.items.map((item) => ({
         category: item.category,
@@ -822,7 +555,7 @@ const MachineDetails: React.FC = () => {
               <div className="mt-8 bg-white rounded-lg shadow-lg p-6">
                 <h3 className="mb-4 text-base font-medium">Specifications</h3>
                 <div className="grid grid-cols-1 gap-4 p-4 bg-gray-50 rounded-lg sm:grid-cols-2 md:grid-cols-3">
-                  {machine.specifications.map((spec, index) => (
+                  {(machine.specifications || []).map((spec, index) => (
                     <div key={index} className="flex justify-between">
                       <span className="text-gray-500">{spec.name}:</span>
                       <span className="font-medium">{spec.value}</span>
@@ -1091,7 +824,7 @@ const MachineDetails: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {machine.storePurchases.map((purchase) => (
+                      {(machine.storePurchases || []).map((purchase) => (
                         <tr key={purchase.id} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className="font-medium text-sky-600 cursor-pointer hover:text-sky-800">
@@ -1163,7 +896,7 @@ const MachineDetails: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {machine.itemUsageHistory.map((item) => (
+                      {(machine.itemUsageHistory || []).map((item) => (
                         <tr key={item.id} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div>
@@ -1222,9 +955,9 @@ const MachineDetails: React.FC = () => {
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <h3 className="text-base font-medium">Maintenance Schedule</h3>
-                <button className="inline-flex items-center px-4 py-2 text-xs font-medium text-white bg-sky-600 rounded-md border border-transparent shadow-lg hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500">
+                <Link to="/assign-task" className="inline-flex items-center px-4 py-2 text-xs font-medium text-white bg-sky-600 rounded-md border border-transparent shadow-lg hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500">
                   Schedule Maintenance
-                </button>
+                </Link>
               </div>
 
               {/* Maintenance tasks */}
@@ -1272,7 +1005,7 @@ const MachineDetails: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {machine.maintenanceTasks.map((task) => (
+                      {(machine.maintenanceTasks || []).map((task) => (
                         <tr key={task.id} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-xs font-medium text-gray-900">
@@ -1512,9 +1245,9 @@ const MachineDetails: React.FC = () => {
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <h3 className="text-base font-medium">Repair History</h3>
-                <button className="inline-flex items-center px-4 py-2 text-xs font-medium text-white bg-sky-600 rounded-md border border-transparent shadow-lg hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500">
+                <Link to="/repair-tasks" className="inline-flex items-center px-4 py-2 text-xs font-medium text-white bg-sky-600 rounded-md border border-transparent shadow-lg hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500">
                   Add Repair Record
-                </button>
+                </Link>
               </div>
 
               <div className="overflow-x-auto rounded-lg border border-gray-200">
@@ -1787,7 +1520,7 @@ const MachineDetails: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {machine.documents.map((doc) => (
+                    {(machine.documents || []).map((doc) => (
                       <tr key={doc.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4">
                           <div className="flex items-center">

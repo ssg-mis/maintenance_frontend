@@ -1,5 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import useAuthStore from "../store/authStore";
+import { canModifyPage } from "../services/permissionService";
+import toast from "react-hot-toast";
 import {
   Search,
   Filter,
@@ -14,101 +17,45 @@ import {
   Package,
 } from "lucide-react";
 
-// Mock data for machines
-const mockMachines = [
-  {
-    id: 1,
-    name: "Hydraulic Press HP-102",
-    department: "Manufacturing",
-    status: "operational",
-    lastMaintenance: "2023-12-15",
-    nextMaintenance: "2024-03-15",
-    purchaseDate: "2020-06-10",
-    purchasePrice: 85000,
-    totalRepairCost: 12450,
-    repairCount: 8,
-    healthScore: 92,
-    image: "https://images.unsplash.com/photo-1565071559227-20ab25b7685e?w=400&h=300&fit=crop",
-    taskAssigned: true,
-    assignedUser: "John Smith",
-    maintenanceParts: ["Hydraulic Seals", "Pressure Valves", "Oil Filters"],
-  },
-  {
-    id: 2,
-    name: "CNC Machine CNC-305",
-    department: "Manufacturing",
-    status: "maintenance",
-    lastMaintenance: "2024-01-20",
-    nextMaintenance: "2024-04-20",
-    purchaseDate: "2019-03-22",
-    purchasePrice: 120000,
-    totalRepairCost: 18700,
-    repairCount: 12,
-    healthScore: 78,
-    image: "https://images.unsplash.com/photo-1504328345606-18bbc8c9d7d1?w=400&h=300&fit=crop",
-    taskAssigned: true,
-    assignedUser: "Sarah Johnson",
-    maintenanceParts: ["Spindle Bearings", "Coolant Pump", "Drive Belt", "Linear Guides", "Control Board"],
-  },
-  {
-    id: 3,
-    name: "Conveyor Belt CB-201",
-    department: "Packaging",
-    status: "repair",
-    lastMaintenance: "2023-11-05",
-    nextMaintenance: "2024-02-05",
-    purchaseDate: "2021-01-15",
-    purchasePrice: 45000,
-    totalRepairCost: 5200,
-    repairCount: 4,
-    healthScore: 65,
-    image: "https://images.unsplash.com/photo-1587293852726-70cdb56c2866?w=400&h=300&fit=crop",
-    taskAssigned: false,
-    assignedUser: null,
-    maintenanceParts: ["Belt Tensioner", "Motor Brushes"],
-  },
-  {
-    id: 4,
-    name: "Injection Molder IM-405",
-    department: "Manufacturing",
-    status: "operational",
-    lastMaintenance: "2024-02-10",
-    nextMaintenance: "2024-05-10",
-    purchaseDate: "2022-08-30",
-    purchasePrice: 95000,
-    totalRepairCost: 3450,
-    repairCount: 2,
-    healthScore: 95,
-    image: "https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?w=400&h=300&fit=crop",
-    taskAssigned: true,
-    assignedUser: "Mike Davis",
-    maintenanceParts: ["Heating Elements", "Injection Nozzle", "Hydraulic Cylinder", "Temperature Sensors"],
-  },
-  {
-    id: 5,
-    name: "Industrial Oven IO-103",
-    department: "Production",
-    status: "operational",
-    lastMaintenance: "2024-01-05",
-    nextMaintenance: "2024-04-05",
-    purchaseDate: "2020-11-12",
-    purchasePrice: 72000,
-    totalRepairCost: 8900,
-    repairCount: 6,
-    healthScore: 85,
-    image: "https://images.unsplash.com/photo-1513828583688-c52646db42da?w=400&h=300&fit=crop",
-    taskAssigned: false,
-    assignedUser: null,
-    maintenanceParts: ["Heating Coils", "Thermostat", "Fan Motor", "Insulation Panels", "Door Seals"],
-  },
-];
-
 const Machines = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortColumn, setSortColumn] = useState("name");
   const [sortDirection, setSortDirection] = useState("asc");
   const [selectedDepartment, setSelectedDepartment] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
+  const { token, user } = useAuthStore();
+  const canModify = canModifyPage(user, "machines");
+  const [machines, setMachines] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    fetch("http://localhost:5000/api/machines", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+      .then((res) => res.json())
+      .then((result) => {
+        if (result.success && Array.isArray(result.data)) {
+          setMachines(result.data);
+        } else {
+          toast.error(result.message || "Failed to load machines from database");
+        }
+      })
+      .catch((error) => {
+        console.error("Machines API error:", error);
+        toast.error("Unable to connect to machines database");
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [token]);
 
   const handleSort = (column: string) => {
     if (sortColumn === column) {
@@ -119,27 +66,28 @@ const Machines = () => {
     }
   };
 
-  const filteredMachines = mockMachines
+  const filteredMachines = machines
     .filter((machine) => {
       const searchLower = searchTerm.toLowerCase();
+      const parts = Array.isArray(machine.maintenanceParts) ? machine.maintenanceParts : [];
       
       const matchesSearch = 
-        machine.name.toLowerCase().includes(searchLower) ||
-        machine.id.toString().includes(searchLower) ||
-        machine.department.toLowerCase().includes(searchLower) ||
-        machine.status.toLowerCase().includes(searchLower) ||
-        machine.assignedUser?.toLowerCase().includes(searchLower) ||
-        machine.maintenanceParts.some(part => part.toLowerCase().includes(searchLower)) ||
-        new Date(machine.nextMaintenance).toLocaleDateString().includes(searchLower) ||
-        new Date(machine.lastMaintenance).toLocaleDateString().includes(searchLower) ||
-        machine.repairCount.toString().includes(searchLower) ||
-        machine.healthScore.toString().includes(searchLower);
+        String(machine.name || "").toLowerCase().includes(searchLower) ||
+        String(machine.id || "").toLowerCase().includes(searchLower) ||
+        String(machine.department || "").toLowerCase().includes(searchLower) ||
+        String(machine.status || "").toLowerCase().includes(searchLower) ||
+        String(machine.assignedUser || "").toLowerCase().includes(searchLower) ||
+        parts.some((part: string) => String(part || "").toLowerCase().includes(searchLower)) ||
+        (machine.nextMaintenance ? new Date(machine.nextMaintenance).toLocaleDateString().includes(searchLower) : false) ||
+        (machine.lastMaintenance ? new Date(machine.lastMaintenance).toLocaleDateString().includes(searchLower) : false) ||
+        String(machine.repairCount ?? "").includes(searchLower) ||
+        String(machine.healthScore ?? "").includes(searchLower);
       
       const matchesDepartment =
         selectedDepartment === "all" ||
-        machine.department === selectedDepartment;
+        String(machine.department || "").toLowerCase() === selectedDepartment.toLowerCase();
       const matchesStatus =
-        selectedStatus === "all" || machine.status === selectedStatus;
+        selectedStatus === "all" || String(machine.status || "").toLowerCase() === selectedStatus.toLowerCase();
       return matchesSearch && matchesDepartment && matchesStatus;
     })
     .sort((a, b) => {
@@ -230,13 +178,19 @@ const Machines = () => {
           <h1 className="text-2xl font-black text-gray-900 tracking-tight">Machines</h1>
           <p className="text-xs text-gray-500 mt-1 uppercase font-bold tracking-widest">Equipment Master List</p>
         </div>
-        <Link
-          to="/machines/new"
-          className="inline-flex items-center px-6 py-3 text-sm font-black text-white bg-sky-600 rounded-xl border border-transparent shadow-xl shadow-sky-100 hover:bg-sky-700 focus:outline-none focus:ring-4 focus:ring-sky-500/10 w-full sm:w-auto justify-center transition-all active:scale-95 uppercase tracking-widest"
-        >
-          <Plus size={18} className="mr-2" />
-          Add Machine
-        </Link>
+        {canModify ? (
+          <Link
+            to="/machines/new"
+            className="inline-flex items-center px-6 py-3 text-sm font-black text-white bg-sky-600 rounded-xl border border-transparent shadow-xl shadow-sky-100 hover:bg-sky-700 focus:outline-none focus:ring-4 focus:ring-sky-500/10 w-full sm:w-auto justify-center transition-all active:scale-95 uppercase tracking-widest"
+          >
+            <Plus size={18} className="mr-2" />
+            Add Machine
+          </Link>
+        ) : (
+          <span className="inline-flex items-center px-4 py-2 text-xs font-semibold text-gray-500 bg-gray-100 dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700">
+            View Only Mode
+          </span>
+        )}
       </div>
 
       {/* Filter and Search */}
@@ -411,76 +365,96 @@ const Machines = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredMachines.map((machine) => (
-                <tr key={machine.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 text-xs font-medium whitespace-nowrap">
-                    <div className="flex space-x-2">
-                      <Link
-                        to={`/machines/${machine.id}`}
-                        className="p-1 text-sky-600 rounded hover:text-sky-900 hover:bg-sky-50"
-                      >
-                        <FileText size={18} />
-                      </Link>
-                      <button className="p-1 text-amber-600 rounded hover:text-amber-900 hover:bg-amber-50">
-                        <Wrench size={18} />
-                      </button>
+              {loading ? (
+                <tr>
+                  <td colSpan={10} className="py-12 text-center text-gray-500">
+                    <div className="inline-flex items-center gap-2">
+                      <div className="w-5 h-5 border-2 border-sky-600 border-t-transparent rounded-full animate-spin" />
+                      <span className="text-sm font-medium">Loading machines from database...</span>
                     </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <img
-                      src={machine.image}
-                      alt={machine.name}
-                      className="w-16 h-16 object-cover rounded-lg"
-                    />
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-xs font-medium text-gray-900">
-                      {machine.name}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      ID: {machine.id}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-xs text-gray-900">
-                      {machine.department}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-wrap gap-1 max-w-xs">
-                      {machine.maintenanceParts.map((part, index) => (
-                        <span
-                          key={index}
-                          className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-sky-100 text-sky-800"
-                        >
-                          {part}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {getStatusBadge(machine.status)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {getTaskAssignmentBadge(machine.taskAssigned)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-xs text-gray-900">
-                      {new Date(machine.nextMaintenance).toLocaleDateString()}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      Last:{" "}
-                      {new Date(machine.lastMaintenance).toLocaleDateString()}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-xs text-gray-500 whitespace-nowrap">
-                    {machine.repairCount}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {getHealthIndicator(machine.healthScore)}
                   </td>
                 </tr>
-              ))}
+              ) : filteredMachines.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="py-12 text-center text-gray-500">
+                    <p className="text-sm font-semibold">No machines found matching your criteria.</p>
+                  </td>
+                </tr>
+              ) : (
+                filteredMachines.map((machine) => (
+                  <tr key={machine.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 text-xs font-medium whitespace-nowrap">
+                      <div className="flex space-x-2">
+                        <Link
+                          to={`/machines/${machine.id}`}
+                          className="p-1 text-sky-600 rounded hover:text-sky-900 hover:bg-sky-50"
+                        >
+                          <FileText size={18} />
+                        </Link>
+                        <Link
+                          to={`/machines/${machine.id}`}
+                          className="p-1 text-amber-600 rounded hover:text-amber-900 hover:bg-amber-50"
+                        >
+                          <Wrench size={18} />
+                        </Link>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <img
+                        src={machine.image || "https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?w=400&h=300&fit=crop"}
+                        alt={machine.name}
+                        className="w-16 h-16 object-cover rounded-lg"
+                      />
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-xs font-medium text-gray-900">
+                        {machine.name}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        ID: {machine.id}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-xs text-gray-900">
+                        {machine.department}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-wrap gap-1 max-w-xs">
+                        {(Array.isArray(machine.maintenanceParts) ? machine.maintenanceParts : []).map((part: string, index: number) => (
+                          <span
+                            key={index}
+                            className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-sky-100 text-sky-800"
+                          >
+                            {part}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {getStatusBadge(machine.status)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {getTaskAssignmentBadge(machine.taskAssigned)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-xs text-gray-900">
+                        {machine.nextMaintenance ? new Date(machine.nextMaintenance).toLocaleDateString() : "—"}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        Last:{" "}
+                        {machine.lastMaintenance ? new Date(machine.lastMaintenance).toLocaleDateString() : "—"}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-xs text-gray-500 whitespace-nowrap">
+                      {machine.repairCount ?? 0}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {getHealthIndicator(Number(machine.healthScore ?? 100))}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

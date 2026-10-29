@@ -1,31 +1,35 @@
-import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
 import {
-  ChevronLeft,
-  Clock,
-  CheckCircle,
-  AlertTriangle,
+  ArrowLeft,
   Calendar,
+  CheckCircle,
+  Clock,
+  AlertTriangle,
+  MapPin,
   DollarSign,
-  Wrench,
-  FileText,
   User,
-  Package,
-  ShoppingCart,
-  Building,
-  Upload,
-  Paperclip,
+  ClipboardList,
+  Trash2,
   X,
-  Camera,
   Save,
+  Volume2,
+  Thermometer,
+  Image as ImageIcon,
+  Wrench,
+  CheckSquare,
+  Square,
+  Eye,
+  Pencil,
 } from "lucide-react";
+import useAuthStore from "../store/authStore";
 
 interface ChecklistItem {
   id: number;
   taskNo: string;
   department: string;
   description: string;
-  taskStatus: "pending" | "completed" | "in-progress";
+  taskStatus: string;
   image: string | null;
   remarks: string;
   soundOfMachine: string;
@@ -33,37 +37,26 @@ interface ChecklistItem {
   maintenanceCost: string;
 }
 
-interface DocumentItem {
+interface DetailItem {
   id: number;
-  name: string;
-  type: string;
-  uploadedBy: string;
-  date: string;
-}
-
-interface HistoryItemDetail {
   taskNo: string;
-  department: string;
+  taskDate: string;
   description: string;
-  taskStatus: "pending" | "completed" | "in-progress";
-  remarks: string;
-  soundOfMachine: string;
+  soundTest: string;
   temperature: string;
-  maintenanceCost: string;
-  image: string | null;
 }
 
-interface HistoryEntry {
+interface ChecklistHistory {
   id: number;
-  date: string;
-  user: string;
+  submittedBy: string;
   action: string;
-  items: HistoryItemDetail[];
+  submittedAt: string;
+  items: ChecklistItem[];
 }
 
-interface MockTask {
-  id: number;
-  machineId: number;
+interface TaskData {
+  id: string;
+  machineId: number | string;
   machineName: string;
   department: string;
   type: string;
@@ -72,891 +65,1416 @@ interface MockTask {
   assignedTo: string;
   priority: string;
   location: string;
-  vendor: string;
+  vendor?: string;
   description: string;
   estimatedCost: number;
-  detailsData: Array<{
-    id: number;
-    taskNo: string;
-    taskDate: string;
-    description: string;
-    soundTest: string;
-    temperature: string;
-  }>;
+  detailsData: DetailItem[];
   checklistItems: ChecklistItem[];
-  documents: DocumentItem[];
 }
 
-const mockTask: MockTask = {
-  id: 3,
-  machineId: 2,
-  machineName: "CNC Machine CNC-305",
+const DEFAULT_CHECKLIST_TEMPLATE: ChecklistItem[] = [
+  {
+    id: 1,
+    taskNo: "CHK-001",
+    department: "Manufacturing",
+    description: "Inspect machine for visible damage and general condition",
+    taskStatus: "pending",
+    image: null,
+    remarks: "",
+    soundOfMachine: "",
+    temperature: "",
+    maintenanceCost: "",
+  },
+  {
+    id: 2,
+    taskNo: "CHK-002",
+    department: "Manufacturing",
+    description: "Check machine sound and abnormal noise",
+    taskStatus: "pending",
+    image: null,
+    remarks: "",
+    soundOfMachine: "",
+    temperature: "",
+    maintenanceCost: "",
+  },
+  {
+    id: 3,
+    taskNo: "CHK-003",
+    department: "Manufacturing",
+    description: "Check operating temperature",
+    taskStatus: "pending",
+    image: null,
+    remarks: "",
+    soundOfMachine: "",
+    temperature: "",
+    maintenanceCost: "",
+  },
+  {
+    id: 4,
+    taskNo: "CHK-004",
+    department: "Manufacturing",
+    description: "Inspect important maintenance components",
+    taskStatus: "pending",
+    image: null,
+    remarks: "",
+    soundOfMachine: "",
+    temperature: "",
+    maintenanceCost: "",
+  },
+  {
+    id: 5,
+    taskNo: "CHK-005",
+    department: "Manufacturing",
+    description: "Record maintenance cost and final remarks",
+    taskStatus: "pending",
+    image: null,
+    remarks: "",
+    soundOfMachine: "",
+    temperature: "",
+    maintenanceCost: "",
+  },
+];
+
+const fallbackTask: TaskData = {
+  id: "task-001",
+  machineId: 1,
+  machineName: "Hydraulic Press HP-102",
   department: "Manufacturing",
-  type: "Off-site Service",
-  status: "in-progress",
-  dueDate: "2024-03-22",
-  assignedTo: "External Vendor",
-  priority: "high",
-  location: "Off-site",
-  vendor: "Precision Machines Inc.",
-  description: "Send control unit for recalibration and firmware update.",
-  estimatedCost: 2800,
+  type: "Quarterly Maintenance",
+  status: "scheduled",
+  dueDate: new Date().toISOString().slice(0, 10),
+  assignedTo: "John Smith",
+  priority: "medium",
+  location: "On-site",
+  vendor: "Precision Systems",
+  description: "Perform scheduled quarterly maintenance, hydraulic fluid check, pressure test, and general inspection.",
+  estimatedCost: 1200,
   detailsData: [
     {
       id: 1,
       taskNo: "TSK-001",
-      taskDate: "2024-03-01",
-      description: "Initial inspection and diagnosis",
+      taskDate: new Date().toISOString().slice(0, 10),
+      description: "Visual inspection and safety guard verification",
       soundTest: "Normal",
       temperature: "45°C",
     },
     {
       id: 2,
       taskNo: "TSK-002",
-      taskDate: "2024-03-05",
-      description: "Disconnect power and prepare unit",
-      soundTest: "N/A",
-      temperature: "22°C",
-    },
-    {
-      id: 3,
-      taskNo: "TSK-003",
-      taskDate: "2024-03-10",
-      description: "Pack and ship to vendor",
-      soundTest: "N/A",
-      temperature: "N/A",
+      taskDate: new Date().toISOString().slice(0, 10),
+      description: "Hydraulic pressure line check and pump acoustic test",
+      soundTest: "68 dB",
+      temperature: "52°C",
     },
   ],
-  checklistItems: [
-    {
-      id: 1,
-      taskNo: "CHK-001",
-      department: "Manufacturing",
-      description: "Disconnect power and tag out machine",
-      taskStatus: "pending",
-      image: null,
-      remarks: "",
-      soundOfMachine: "",
-      temperature: "",
-      maintenanceCost: "",
-    },
-    {
-      id: 2,
-      taskNo: "CHK-002",
-      department: "Manufacturing",
-      description: "Remove control unit from housing",
-      taskStatus: "pending",
-      image: null,
-      remarks: "",
-      soundOfMachine: "",
-      temperature: "",
-      maintenanceCost: "",
-    },
-    {
-      id: 3,
-      taskNo: "CHK-003",
-      department: "Quality Control",
-      description: "Pack for shipping with appropriate padding",
-      taskStatus: "pending",
-      image: null,
-      remarks: "",
-      soundOfMachine: "",
-      temperature: "",
-      maintenanceCost: "",
-    },
-    {
-      id: 4,
-      taskNo: "CHK-004",
-      department: "Logistics",
-      description: "Complete shipping documentation",
-      taskStatus: "pending",
-      image: null,
-      remarks: "",
-      soundOfMachine: "",
-      temperature: "",
-      maintenanceCost: "",
-    },
-    {
-      id: 5,
-      taskNo: "CHK-005",
-      department: "Logistics",
-      description: "Send to vendor's service center",
-      taskStatus: "pending",
-      image: null,
-      remarks: "",
-      soundOfMachine: "",
-      temperature: "",
-      maintenanceCost: "",
-    },
-  ],
-  documents: [
-    {
-      id: 1,
-      name: "Service Request Form.pdf",
-      type: "PDF",
-      uploadedBy: "John Smith",
-      date: "2024-03-01",
-    },
-    {
-      id: 2,
-      name: "Shipping Documentation.pdf",
-      type: "PDF",
-      uploadedBy: "Mike Anderson",
-      date: "2024-03-12",
-    },
-  ],
+  checklistItems: DEFAULT_CHECKLIST_TEMPLATE,
 };
 
-const TaskDetails = () => {
-  const [task] = useState(mockTask);
-  const [activeTab, setActiveTab] = useState("details");
-  const [checklistItems, setChecklistItems] = useState<any[]>(mockTask.checklistItems);
-  const [selectedRows, setSelectedRows] = useState<number[]>([]);
-  const [history, setHistory] = useState<any[]>([]);
-  const [documents, setDocuments] = useState<any[]>(mockTask.documents);
-  const [showUpdateForm, setShowUpdateForm] = useState(false);
-  const [showUploadForm, setShowUploadForm] = useState(false);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
+const formatDate = (dateValue?: string): string => {
+  if (!dateValue) return "N/A";
+  const date = new Date(dateValue);
+  if (isNaN(date.getTime())) return String(dateValue);
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+};
 
-  const handleRowSelect = (id: number) => {
-    setSelectedRows((prev) =>
-      prev.includes(id) ? prev.filter((rowId) => rowId !== id) : [...prev, id]
-    );
+const formatDateTime = (dateValue?: string): string => {
+  if (!dateValue) return "N/A";
+  const date = new Date(dateValue);
+  if (isNaN(date.getTime())) return String(dateValue);
+  return date.toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const normalizeStatus = (status: any): string => {
+  const s = String(status || "scheduled").trim().toLowerCase();
+  if (s === "in-progress" || s === "inprogress") return "in-progress";
+  if (s === "completed" || s === "complete" || s === "done") return "completed";
+  if (s === "overdue" || s === "late") return "overdue";
+  return "scheduled";
+};
+
+const normalizeChecklistStatus = (status: any): string => {
+  const s = String(status || "pending").trim().toLowerCase().replace(/_/g, "-");
+  if (s === "completed" || s === "complete" || s === "done") return "completed";
+  if (s === "in-progress" || s === "inprogress") return "in-progress";
+  return "pending";
+};
+
+const normalizeChecklistItem = (
+  item: any,
+  index: number,
+  dept = "Manufacturing"
+): ChecklistItem => {
+  return {
+    id: Number(item?.id) || index + 1,
+    taskNo: item?.taskNo || item?.task_no || `CHK-${String(index + 1).padStart(3, "0")}`,
+    department: item?.department || dept,
+    description: item?.description || "",
+    taskStatus: normalizeChecklistStatus(item?.taskStatus || item?.task_status),
+    image: item?.image || null,
+    remarks: item?.remarks || "",
+    soundOfMachine: item?.soundOfMachine || item?.sound_of_machine || "",
+    temperature: item?.temperature || "",
+    maintenanceCost: String(item?.maintenanceCost ?? item?.maintenance_cost ?? ""),
   };
+};
 
-  const handleSelectAll = () => {
-    if (selectedRows.length === checklistItems.length) {
-      setSelectedRows([]);
-    } else {
-      setSelectedRows(checklistItems.map((item) => item.id));
-    }
-  };
-
-  const handleChecklistUpdate = (id: number, field: string, value: any) => {
-    setChecklistItems((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, [field]: value } : item
+const normalizeHistoryRecord = (record: any, index: number): ChecklistHistory => {
+  const rawItems = record?.items || record?.checklistItems || record?.checklist_items || [];
+  return {
+    id: Number(record?.id) || index + 1,
+    submittedBy: record?.submittedBy || record?.submitted_by || "Admin",
+    action: record?.action || "Checklist submitted",
+    submittedAt: record?.submittedAt || record?.submitted_at || record?.createdAt || record?.created_at || new Date().toISOString(),
+    items: Array.isArray(rawItems)
+      ? rawItems.map((item: any, idx: number) =>
+        normalizeChecklistItem(item, idx, item?.department || "Manufacturing")
       )
+      : [],
+  };
+};
+
+const TaskDetails: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const token = useAuthStore((state) => state.token);
+  const user = useAuthStore((state) => state.user);
+
+  const [task, setTask] = useState<TaskData>(fallbackTask);
+  const [activeSection, setActiveSection] = useState<"details" | "padding" | "history">("details");
+  const [selectedItems, setSelectedItems] = useState<number[]>([]);
+  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>(DEFAULT_CHECKLIST_TEMPLATE);
+  const [history, setHistory] = useState<ChecklistHistory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submittingChecklist, setSubmittingChecklist] = useState(false);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [selectedStatus, setSelectedStatus] = useState("scheduled");
+  const [statusUpdating, setStatusUpdating] = useState(false);
+  const [accessDenied, setAccessDenied] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+  // Clear feedback message automatically after 5 seconds
+  useEffect(() => {
+    if (!feedbackMessage) return;
+    const timer = setTimeout(() => setFeedbackMessage(null), 5000);
+    return () => clearTimeout(timer);
+  }, [feedbackMessage]);
+
+  /* Load Task Details dynamically */
+  useEffect(() => {
+    if (!id) return;
+
+    let isMounted = true;
+    const loadTask = async () => {
+      setLoading(true);
+      try {
+        const headers: Record<string, string> = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
+        let result: any = null;
+        const res = await fetch(`http://localhost:5000/api/tasks/${id}`, { headers });
+        if (res.status === 403) {
+          if (isMounted) {
+            setAccessDenied(true);
+            setLoading(false);
+          }
+          return;
+        }
+        if (res.ok) {
+          result = await res.json();
+        }
+
+        // Fallback: search in list endpoint if direct by-id failed
+        if (!result || !result.success || !result.data) {
+          const listRes = await fetch("http://localhost:5000/api/tasks", { headers });
+          if (listRes.ok) {
+            const listJson = await listRes.json();
+            if (listJson.success && Array.isArray(listJson.data)) {
+              const found = listJson.data.find(
+                (t: any) => String(t.id) === String(id) || String(t.task_id) === String(id)
+              );
+              if (found) result = { success: true, data: found };
+            }
+          }
+        }
+
+        if (result?.success && result.data && isMounted) {
+          const d = result.data;
+
+          // Client-side guard for regular users
+          const isAdmin = user?.role === 'admin';
+          if (!isAdmin) {
+            const currentUserId = String(user?.id || '').trim().toLowerCase();
+            const currentUserName = String((user as any)?.username || '').trim().toLowerCase();
+            const currentEmpName = String((user as any)?.employeeName || (user as any)?.employee_name || '').trim().toLowerCase();
+            const currentName = String(user?.name || '').trim().toLowerCase();
+            const assignee = String(d.assignedTo || d.assigned_to || '').trim().toLowerCase();
+
+            const matches =
+              (currentUserId && (assignee === currentUserId || assignee.includes(currentUserId))) ||
+              (currentUserName && assignee.includes(currentUserName)) ||
+              (currentEmpName && assignee.includes(currentEmpName)) ||
+              (currentName && assignee.includes(currentName));
+
+            if (!matches) {
+              setAccessDenied(true);
+              setLoading(false);
+              return;
+            }
+          }
+          const dept = d.department || fallbackTask.department;
+
+          // Merge backend checklist with template items
+          const rawChecklist = Array.isArray(d.checklistItems) ? d.checklistItems : [];
+          const normalizedDbChecklist = rawChecklist.map((item: any, idx: number) =>
+            normalizeChecklistItem(item, idx, dept)
+          );
+
+          let resolvedChecklist: ChecklistItem[];
+          if (normalizedDbChecklist.length > 0) {
+            resolvedChecklist = DEFAULT_CHECKLIST_TEMPLATE.map((tpl) => {
+              const found = normalizedDbChecklist.find(
+                (dbItem) => dbItem.taskNo.trim().toLowerCase() === tpl.taskNo.trim().toLowerCase()
+              );
+              return found ? { ...tpl, ...found } : { ...tpl, department: dept };
+            });
+            const extras = normalizedDbChecklist.filter(
+              (dbItem) =>
+                !DEFAULT_CHECKLIST_TEMPLATE.some(
+                  (tpl) => tpl.taskNo.trim().toLowerCase() === dbItem.taskNo.trim().toLowerCase()
+                )
+            );
+            resolvedChecklist = [...resolvedChecklist, ...extras];
+          } else {
+            resolvedChecklist = DEFAULT_CHECKLIST_TEMPLATE.map((tpl) => ({
+              ...tpl,
+              department: dept,
+            }));
+          }
+
+          const loadedTask: TaskData = {
+            id: String(d.id || id),
+            machineId: d.machineId || d.machine_id || fallbackTask.machineId,
+            machineName: d.machineName || d.machine_name || fallbackTask.machineName,
+            department: dept,
+            type: d.type || fallbackTask.type,
+            status: normalizeStatus(d.status),
+            dueDate: d.dueDate || d.due_date || fallbackTask.dueDate,
+            assignedTo: d.assignedTo || d.assigned_to || fallbackTask.assignedTo,
+            priority: String(d.priority || "medium").toLowerCase(),
+            location: d.location || fallbackTask.location,
+            vendor: d.vendor || fallbackTask.vendor,
+            description: d.description || fallbackTask.description,
+            estimatedCost: Number(d.estimatedCost ?? d.estimated_cost ?? fallbackTask.estimatedCost),
+            detailsData: [
+              {
+                id: 1,
+                taskNo: "TSK-001",
+                taskDate: d.dueDate || d.due_date || fallbackTask.dueDate,
+                description: d.description || "Machine inspection and operational check",
+                soundTest: d.soundOfMachine || d.sound_of_machine || "Normal",
+                temperature: d.temperature || "Normal",
+              },
+            ],
+            checklistItems: resolvedChecklist,
+          };
+
+          setTask(loadedTask);
+          setChecklistItems(resolvedChecklist);
+          setSelectedStatus(loadedTask.status);
+        }
+      } catch (err) {
+        console.error("Error loading task details:", err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    loadTask();
+    return () => {
+      isMounted = false;
+    };
+  }, [id, token]);
+
+  /* Load Checklist History dynamically */
+  useEffect(() => {
+    if (!id) return;
+
+    let isMounted = true;
+    const loadHistory = async () => {
+      try {
+        const headers: Record<string, string> = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
+        const res = await fetch(`http://localhost:5000/api/tasks/${id}/checklist-history`, { headers });
+        if (res.ok) {
+          const json = await res.json();
+          if (json?.success && Array.isArray(json.data) && isMounted) {
+            const mappedHistory = json.data.map((rec: any, idx: number) =>
+              normalizeHistoryRecord(rec, idx)
+            );
+            setHistory(mappedHistory);
+          }
+        }
+      } catch (err) {
+        console.error("Error loading checklist history:", err);
+      }
+    };
+
+    loadHistory();
+    return () => {
+      isMounted = false;
+    };
+  }, [id, token]);
+
+  /* Toggle single item selection */
+  const handleChecklistSelection = (itemId: number) => {
+    setSelectedItems((prev) =>
+      prev.includes(itemId) ? prev.filter((i) => i !== itemId) : [...prev, itemId]
     );
   };
 
-  const handleImageUpload = (id: number, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        handleChecklistUpdate(id, "image", reader.result);
-      };
-      reader.readAsDataURL(file);
+  /* Toggle Select All */
+  const handleSelectAll = () => {
+    if (selectedItems.length === checklistItems.length) {
+      setSelectedItems([]);
+    } else {
+      setSelectedItems(checklistItems.map((item) => item.id));
     }
   };
 
-  const handleSubmitChecklist = () => {
-    const selectedItems = checklistItems.filter((item) =>
-      selectedRows.includes(item.id)
+  /* Update Checklist row field */
+  const handleChecklistChange = (
+    itemId: number,
+    field: keyof ChecklistItem,
+    value: string
+  ) => {
+    setChecklistItems((prev) =>
+      prev.map((item) => (item.id === itemId ? { ...item, [field]: value } : item))
     );
+  };
 
+  /* Image Upload with Base64 */
+  const handleImageUpload = (
+    itemId: number,
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = String(reader.result || "");
+      setChecklistItems((prev) =>
+        prev.map((item) => (item.id === itemId ? { ...item, image: base64 } : item))
+      );
+    };
+    reader.readAsDataURL(file);
+  };
+
+  /* Remove Image from row */
+  const handleRemoveImage = (itemId: number) => {
+    setChecklistItems((prev) =>
+      prev.map((item) => (item.id === itemId ? { ...item, image: null } : item))
+    );
+  };
+
+  /* Submit Checklist / Padding */
+  const handleSubmitChecklist = async () => {
     if (selectedItems.length === 0) {
-      alert("Please select at least one checklist item to submit");
+      setFeedbackMessage({
+        type: "error",
+        text: "Please select at least one checklist item before submitting.",
+      });
       return;
     }
 
-    const newHistoryEntry = {
-      id: history.length + 1,
-      date: new Date().toISOString().split("T")[0],
-      user: "Current User",
-      action: "Checklist submitted",
-      items: selectedItems.map((item) => ({
+    try {
+      setSubmittingChecklist(true);
+      const itemsToSubmit = checklistItems.filter((item) => selectedItems.includes(item.id));
+      const payloadItems = itemsToSubmit.map((item) => ({
+        id: item.id,
         taskNo: item.taskNo,
         department: item.department,
         description: item.description,
-        taskStatus: item.taskStatus,
+        taskStatus: normalizeChecklistStatus(item.taskStatus),
+        image: item.image,
         remarks: item.remarks,
         soundOfMachine: item.soundOfMachine,
         temperature: item.temperature,
         maintenanceCost: item.maintenanceCost,
-        image: item.image,
-      })),
-    };
+      }));
 
-    setHistory((prev) => [newHistoryEntry, ...prev]);
-    setSelectedRows([]);
-    alert("Checklist submitted successfully!");
-    setActiveTab("history");
-  };
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setUploadFile(file);
+      // 1. Save Checklist items to DB
+      const chkRes = await fetch(`http://localhost:5000/api/tasks/${id}/checklist`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ items: payloadItems }),
+      });
+      const chkJson = await chkRes.json();
+      if (!chkRes.ok || !chkJson.success) {
+        throw new Error(chkJson.message || "Failed to save padding checklist to database.");
+      }
+
+      // Update state with newly returned DB items (contains actual database serial IDs)
+      if (Array.isArray(chkJson.data) && chkJson.data.length > 0) {
+        const savedMap = new Map<string, ChecklistItem>();
+        chkJson.data.forEach((r: any, idx: number) => {
+          const norm = normalizeChecklistItem(r, idx, task.department);
+          savedMap.set(norm.taskNo.trim().toLowerCase(), norm);
+        });
+
+        setChecklistItems((prev) =>
+          prev.map((item) => {
+            const dbMatch = savedMap.get(item.taskNo.trim().toLowerCase());
+            return dbMatch ? { ...item, ...dbMatch } : item;
+          })
+        );
+      }
+
+      // 2. Save Checklist History record to DB
+      const histRes = await fetch(`http://localhost:5000/api/tasks/${id}/checklist-history`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          submittedBy: user?.id || "Admin",
+          action: "Checklist submitted",
+          items: payloadItems,
+        }),
+      });
+      const histJson = await histRes.json();
+      if (histRes.ok && histJson.success && histJson.data) {
+        const newRecord = normalizeHistoryRecord(histJson.data, history.length);
+        setHistory((prev) => [newRecord, ...prev]);
+      }
+
+      setSelectedItems([]);
+      setFeedbackMessage({
+        type: "success",
+        text: "Padding checklist submitted and saved successfully!",
+      });
+    } catch (err: any) {
+      console.error("Padding submission error:", err);
+      setFeedbackMessage({
+        type: "error",
+        text: err?.message || "Failed to submit padding checklist.",
+      });
+    } finally {
+      setSubmittingChecklist(false);
     }
   };
 
-  const handleUploadSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (uploadFile) {
-      const newDocument = {
-        id: Date.now(),
-        name: uploadFile.name,
-        type: uploadFile.type.includes("pdf") ? "PDF" : "File",
-        uploadedBy: "Current User",
-        date: new Date().toISOString().split("T")[0],
-      };
-      setDocuments((prev) => [...prev, newDocument]);
-      alert("Document uploaded successfully");
-      setShowUploadForm(false);
-      setUploadFile(null);
-    }
-  };
+  /* Update Task Status */
+  const handleSaveStatus = async () => {
+    try {
+      setStatusUpdating(true);
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const handleDocumentDelete = (documentId: number) => {
-    if (window.confirm("Are you sure you want to delete this document?")) {
-      setDocuments((prev) => prev.filter((doc) => doc.id !== documentId));
-      alert("Document deleted successfully");
+      const res = await fetch(`http://localhost:5000/api/tasks/${id}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ status: selectedStatus }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setTask((prev) => ({ ...prev, status: selectedStatus }));
+        setShowStatusModal(false);
+        setFeedbackMessage({
+          type: "success",
+          text: `Task status updated to "${selectedStatus}".`,
+        });
+      } else {
+        throw new Error(json.message || "Failed to update status");
+      }
+    } catch (err: any) {
+      console.error("Status update error:", err);
+      setFeedbackMessage({
+        type: "error",
+        text: err?.message || "Failed to update status.",
+      });
+    } finally {
+      setStatusUpdating(false);
     }
   };
 
   const getStatusBadge = (status: string) => {
-    const badges: Record<string, string> = {
-      completed: "bg-green-100 text-green-800",
-      pending: "bg-blue-100 text-blue-800",
-      "in-progress": "bg-purple-100 text-purple-800",
-      overdue: "bg-red-100 text-red-800",
-    };
-    return (
-      <span className={`inline-flex items-center px-3 py-1 text-xs font-medium rounded-full ${badges[status]}`}>
-        {status === "completed" && <CheckCircle size={16} className="mr-1" />}
-        {status === "pending" && <Clock size={16} className="mr-1" />}
-        {status === "in-progress" && <Clock size={16} className="mr-1" />}
-        {status === "overdue" && <AlertTriangle size={16} className="mr-1" />}
-        {status.charAt(0).toUpperCase() + status.slice(1).replace("-", " ")}
-      </span>
-    );
+    const s = normalizeStatus(status);
+    switch (s) {
+      case "completed":
+        return (
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+            <CheckCircle size={12} className="mr-1" />
+            Completed
+          </span>
+        );
+      case "in-progress":
+        return (
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+            <Clock size={12} className="mr-1" />
+            In Progress
+          </span>
+        );
+      case "overdue":
+        return (
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-rose-100 text-rose-800">
+            <AlertTriangle size={12} className="mr-1" />
+            Overdue
+          </span>
+        );
+      case "scheduled":
+      default:
+        return (
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+            <Clock size={12} className="mr-1" />
+            Scheduled
+          </span>
+        );
+    }
   };
 
   const getPriorityBadge = (priority: string) => {
-    const badges: Record<string, string> = {
-      critical: "bg-red-100 text-red-800 border-red-300",
-      high: "bg-amber-100 text-amber-800",
-      medium: "bg-blue-100 text-blue-800",
-      low: "bg-green-100 text-green-800",
-    };
-    return (
-      <span className={`inline-flex items-center px-3 py-1 text-xs font-medium rounded-full ${badges[priority]}`}>
-        {priority.charAt(0).toUpperCase() + priority.slice(1)}
-      </span>
-    );
+    const p = String(priority || "medium").toLowerCase();
+    switch (p) {
+      case "critical":
+        return (
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+            <AlertTriangle size={12} className="mr-1" />
+            Critical
+          </span>
+        );
+      case "high":
+        return (
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+            High
+          </span>
+        );
+      case "medium":
+        return (
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+            Medium
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+            Low
+          </span>
+        );
+    }
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center mb-6 gap-4 overflow-x-auto">
+  const getChecklistStatusBadge = (status: string) => {
+    const s = normalizeChecklistStatus(status);
+    switch (s) {
+      case "completed":
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-100 text-emerald-800">
+            <CheckCircle size={11} className="mr-1" />
+            Completed
+          </span>
+        );
+      case "in-progress":
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-100 text-indigo-800">
+            <Clock size={11} className="mr-1" />
+            In Progress
+          </span>
+        );
+      case "pending":
+      default:
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-amber-100 text-amber-800">
+            <Clock size={11} className="mr-1" />
+            Pending
+          </span>
+        );
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6 p-4 sm:p-6 max-w-7xl mx-auto">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600 mb-3" />
+          <p className="text-xs font-medium text-gray-500">Loading task details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (accessDenied) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-sm border border-rose-200 p-8 text-center max-w-md w-full">
+          <div className="w-14 h-14 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4 border border-rose-100">
+            <AlertTriangle size={28} />
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Access Denied</h2>
+          <p className="text-sm text-gray-600 mb-6">
+            You do not have permission to view this task. Non-admin users are only allowed to view their own assigned tasks.
+          </p>
           <Link
             to="/tasks"
-            className="flex items-center text-sky-600 hover:text-sky-900 font-bold text-sm"
+            className="inline-flex items-center px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors"
           >
-            <ChevronLeft size={20} className="mr-1" />
-            <span>Back to Tasks</span>
+            <ArrowLeft size={15} className="mr-1.5" />
+            Back to My Tasks
           </Link>
-          <div className="flex-1">
-            <h1 className="text-xl md:text-2xl font-black text-gray-900 tracking-tight">
-              {task.type}
-            </h1>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{task.machineName}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5 p-4 sm:p-6 max-w-7xl mx-auto">
+      {/* Feedback banner */}
+      {feedbackMessage && (
+        <div
+          className={`px-4 py-3 rounded-lg text-xs font-medium flex items-center justify-between border ${feedbackMessage.type === "success"
+            ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+            : "bg-rose-50 text-rose-800 border-rose-200"
+            }`}
+        >
+          <div className="flex items-center">
+            {feedbackMessage.type === "success" ? (
+              <CheckCircle size={16} className="mr-2 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertTriangle size={16} className="mr-2 text-rose-600 shrink-0" />
+            )}
+            <span>{feedbackMessage.text}</span>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setFeedbackMessage(null)}
+            className="text-gray-400 hover:text-gray-600 ml-3"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* Top Header */}
+      <div>
+        <Link
+          to="/tasks"
+          className="inline-flex items-center text-xs font-medium text-sky-600 hover:text-sky-800 mb-2 transition-colors"
+        >
+          <ArrowLeft size={14} className="mr-1" />
+          Back to Tasks
+        </Link>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">
+              {task.machineName}
+            </h1>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Task ID: {task.id} &bull; {task.department}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
             {getStatusBadge(task.status)}
             {getPriorityBadge(task.priority)}
-          </div>
-        </div>
-
-        {/* Task Header Card */}
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-          <div className="p-5 sm:p-6 border-b border-gray-100">
-            <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
-              <div>
-                <h2 className="text-lg font-black text-gray-900">{task.machineName}</h2>
-                <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">{task.department} Department</p>
-              </div>
-              <button
-                className="px-6 py-3 text-sm font-black text-white bg-sky-600 rounded-xl hover:bg-sky-700 shadow-xl shadow-sky-100 transition-all active:scale-95 uppercase tracking-widest w-full sm:w-auto"
-                onClick={() => setShowUpdateForm(true)}
-              >
-                Update Status
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div>
-                <h3 className="text-xs font-medium text-gray-500 mb-1">Assignment</h3>
-                <div className="flex items-center">
-                  <User size={16} className="mr-2 text-gray-400" />
-                  <span className="text-xs">{task.assignedTo}</span>
-                </div>
-              </div>
-              <div>
-                <h3 className="text-xs font-medium text-gray-500 mb-1">Location</h3>
-                <div className="flex items-center">
-                  <Wrench size={16} className="mr-2 text-gray-400" />
-                  <span className="text-xs">{task.location}</span>
-                </div>
-              </div>
-              <div>
-                <h3 className="text-xs font-medium text-gray-500 mb-1">Due Date</h3>
-                <div className="flex items-center">
-                  <Calendar size={16} className="mr-2 text-gray-400" />
-                  <span className="text-xs">{new Date(task.dueDate).toLocaleDateString()}</span>
-                </div>
-              </div>
-              <div>
-                <h3 className="text-xs font-medium text-gray-500 mb-1">Estimated Cost</h3>
-                <div className="flex items-center">
-                  <DollarSign size={16} className="mr-2 text-gray-400" />
-                  <span className="text-xs">${task.estimatedCost.toLocaleString()}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Tabs */}
-          <div className="border-b border-gray-200 overflow-x-auto">
-            <nav className="flex -mb-px min-w-max">
-              {["details", "checklist", "history", "documents"].map((tab) => (
-                <button
-                  key={tab}
-                  className={`py-4 px-4 md:px-6 font-medium text-xs border-b-2 whitespace-nowrap ${
-                    activeTab === tab
-                      ? "border-sky-500 text-sky-600"
-                      : "border-transparent text-gray-500 hover:text-gray-700"
-                  }`}
-                  onClick={() => setActiveTab(tab)}
-                >
-                  {tab === "details" && <FileText size={16} className="inline mr-2" />}
-                  {tab === "checklist" && <CheckCircle size={16} className="inline mr-2" />}
-                  {tab === "history" && <Clock size={16} className="inline mr-2" />}
-                  {tab === "documents" && <Paperclip size={16} className="inline mr-2" />}
-                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                </button>
-              ))}
-            </nav>
-          </div>
-
-          {/* Tab Content */}
-          <div className="p-4 md:p-6">
-            {/* Details Tab */}
-            {activeTab === "details" && (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 border">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task No</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task Date</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task Sound Test</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task Temperature</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {task.detailsData.map((detail) => (
-                      <tr key={detail.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-xs font-medium text-gray-900">{detail.taskNo}</td>
-                        <td className="px-4 py-3 text-xs text-gray-500">{new Date(detail.taskDate).toLocaleDateString()}</td>
-                        <td className="px-4 py-3 text-xs text-gray-500">{detail.description}</td>
-                        <td className="px-4 py-3 text-xs text-gray-500">{detail.soundTest}</td>
-                        <td className="px-4 py-3 text-xs text-gray-500">{detail.temperature}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Checklist Tab */}
-            {activeTab === "checklist" && (
-              <div className="space-y-4">
-                <div className="flex flex-col sm:flex-row justify-between gap-2">
-                  <button
-                    onClick={handleSelectAll}
-                    className="px-4 py-2 text-xs text-sky-600 border border-sky-600 rounded-md hover:bg-sky-50"
-                  >
-                    {selectedRows.length === checklistItems.length ? "Deselect All" : "Select All"}
-                  </button>
-                  <button
-                    onClick={handleSubmitChecklist}
-                    disabled={selectedRows.length === 0}
-                    className="px-4 py-2 text-xs text-white bg-sky-600 rounded-md hover:bg-sky-700 disabled:bg-gray-400 flex items-center justify-center"
-                  >
-                    <Save size={16} className="mr-2" />
-                    Submit Checklist ({selectedRows.length})
-                  </button>
-                </div>
-
-                {/* Mobile View */}
-                <div className="block lg:hidden space-y-4">
-                  {checklistItems.map((item) => (
-                    <div key={item.id} className={`border rounded-lg p-4 ${selectedRows.includes(item.id) ? "bg-sky-50 border-sky-300" : "bg-white"}`}>
-                      <div className="flex items-start gap-3 mb-3">
-                        <input
-                          type="checkbox"
-                          checked={selectedRows.includes(item.id)}
-                          onChange={() => handleRowSelect(item.id)}
-                          className="mt-1 h-4 w-4 text-sky-600 rounded"
-                        />
-                        <div className="flex-1">
-                          <h4 className="font-medium text-gray-900">{item.taskNo}</h4>
-                          <p className="text-xs text-gray-600 mt-1">{item.description}</p>
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-3 ml-7">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">Department</label>
-                          <input
-                            type="text"
-                            value={item.department}
-                            readOnly
-                            className="w-full px-3 py-2 text-xs border rounded-md bg-gray-50"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">Task Status</label>
-                          <select
-                            value={item.taskStatus}
-                            onChange={(e) => handleChecklistUpdate(item.id, "taskStatus", e.target.value)}
-                            className="w-full px-3 py-2 text-xs border rounded-md"
-                          >
-                            <option value="pending">Pending</option>
-                            <option value="in-progress">In Progress</option>
-                            <option value="completed">Completed</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">Sound Of Machine</label>
-                          <select
-                            value={item.soundOfMachine}
-                            onChange={(e) => handleChecklistUpdate(item.id, "soundOfMachine", e.target.value)}
-                            className="w-full px-3 py-2 text-xs border rounded-md"
-                          >
-                            <option value="">Select...</option>
-                            <option value="Good">Good</option>
-                            <option value="Bad">Bad</option>
-                            <option value="Better">Better</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">Temperature</label>
-                          <input
-                            type="text"
-                            value={item.temperature}
-                            onChange={(e) => handleChecklistUpdate(item.id, "temperature", e.target.value)}
-                            placeholder="e.g., 45°C"
-                            className="w-full px-3 py-2 text-xs border rounded-md"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">Maintenance Cost</label>
-                          <input
-                            type="text"
-                            value={item.maintenanceCost}
-                            onChange={(e) => handleChecklistUpdate(item.id, "maintenanceCost", e.target.value)}
-                            placeholder="e.g., ₹500"
-                            className="w-full px-3 py-2 text-xs border rounded-md"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">Remarks</label>
-                          <textarea
-                            value={item.remarks}
-                            onChange={(e) => handleChecklistUpdate(item.id, "remarks", e.target.value)}
-                            rows={2}
-                            className="w-full px-3 py-2 text-xs border rounded-md"
-                            placeholder="Enter remarks..."
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">Image</label>
-                          <div className="flex items-center gap-2">
-                            <label className="flex items-center px-3 py-2 text-xs text-sky-600 border border-sky-600 rounded-md cursor-pointer hover:bg-sky-50">
-                              <Camera size={16} className="mr-2" />
-                              Upload
-                              <input
-                                type="file"
-                                accept="image/*"
-                                onChange={(e) => handleImageUpload(item.id, e)}
-                                className="hidden"
-                              />
-                            </label>
-                            {item.image && (
-                              <img src={item.image} alt="Preview" className="h-12 w-12 object-cover rounded border" />
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Desktop View */}
-                <div className="hidden lg:block overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200 border">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left">
-                          <input
-                            type="checkbox"
-                            checked={selectedRows.length === checklistItems.length}
-                            onChange={handleSelectAll}
-                            className="h-4 w-4 text-sky-600 rounded"
-                          />
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task No</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Department</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task Status</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Image</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Remarks</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sound Of Machine</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Temperature</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Maintenance Cost</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {checklistItems.map((item) => (
-                        <tr key={item.id} className={selectedRows.includes(item.id) ? "bg-sky-50" : "hover:bg-gray-50"}>
-                          <td className="px-4 py-3">
-                            <input
-                              type="checkbox"
-                              checked={selectedRows.includes(item.id)}
-                              onChange={() => handleRowSelect(item.id)}
-                              className="h-4 w-4 text-sky-600 rounded"
-                            />
-                          </td>
-                          <td className="px-4 py-3 text-xs font-medium text-gray-900">{item.taskNo}</td>
-                          <td className="px-4 py-3 text-xs text-gray-500">{item.department}</td>
-                          <td className="px-4 py-3 text-xs text-gray-500 max-w-xs">{item.description}</td>
-                          <td className="px-4 py-3 text-xs">
-                            <select
-                              value={item.taskStatus}
-                              onChange={(e) => handleChecklistUpdate(item.id, "taskStatus", e.target.value)}
-                              className="px-2 py-1 text-xs border rounded"
-                            >
-                              <option value="pending">Pending</option>
-                              <option value="in-progress">In Progress</option>
-                              <option value="completed">Completed</option>
-                            </select>
-                          </td>
-                          <td className="px-4 py-3">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <Camera size={16} className="text-sky-600" />
-                              <input
-                                type="file"
-                                accept="image/*"
-                                onChange={(e) => handleImageUpload(item.id, e)}
-                                className="hidden"
-                              />
-                              {item.image && <img src={item.image} alt="Preview" className="h-8 w-8 object-cover rounded" />}
-                            </label>
-                          </td>
-                          <td className="px-4 py-3">
-                            <textarea
-                              value={item.remarks}
-                              onChange={(e) => handleChecklistUpdate(item.id, "remarks", e.target.value)}
-                              rows={1}
-                              className="px-2 py-1 text-xs border rounded w-32"
-                            />
-                          </td>
-                          <td className="px-4 py-3">
-                            <select
-                              value={item.soundOfMachine}
-                              onChange={(e) => handleChecklistUpdate(item.id, "soundOfMachine", e.target.value)}
-                              className="px-2 py-1 text-xs border rounded"
-                            >
-                              <option value="">Select...</option>
-                              <option value="Good">Good</option>
-                              <option value="Bad">Bad</option>
-                              <option value="Better">Better</option>
-                            </select>
-                          </td>
-                          <td className="px-4 py-3">
-                            <input
-                              type="text"
-                              value={item.temperature}
-                              onChange={(e) => handleChecklistUpdate(item.id, "temperature", e.target.value)}
-                              className="px-2 py-1 text-xs border rounded w-24"
-                              placeholder="e.g., 45°C"
-                            />
-                          </td>
-                          <td className="px-4 py-3">
-                            <input
-                              type="text"
-                              value={item.maintenanceCost}
-                              onChange={(e) => handleChecklistUpdate(item.id, "maintenanceCost", e.target.value)}
-                              className="px-2 py-1 text-xs border rounded w-24"
-                              placeholder="₹0"
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* History Tab */}
-            {activeTab === "history" && (
-              <div>
-                {history.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    No checklist submissions yet. Submit a checklist to see history.
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    {history.map((entry: HistoryEntry) => (
-                      <div key={entry.id} className="border rounded-lg p-4 bg-white">
-                        <div className="flex flex-col sm:flex-row justify-between items-start mb-4 gap-2">
-                          <div>
-                            <h3 className="font-medium text-gray-900">{entry.action}</h3>
-                            <p className="text-xs text-gray-500">By {entry.user}</p>
-                          </div>
-                          <span className="text-xs text-gray-500">{new Date(entry.date).toLocaleDateString()}</span>
-                        </div>
-                        <div className="space-y-4">
-                          {entry.items.map((item: HistoryItemDetail, idx: number) => (
-                            <div key={idx} className="bg-gray-50 p-4 rounded-lg">
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
-                                <div>
-                                  <span className="font-medium text-gray-700">Task No:</span>
-                                  <p className="text-gray-900">{item.taskNo}</p>
-                                </div>
-                                <div>
-                                  <span className="font-medium text-gray-700">Department:</span>
-                                  <p className="text-gray-900">{item.department}</p>
-                                </div>
-                                <div>
-                                  <span className="font-medium text-gray-700">Status:</span>
-                                  <p className="text-gray-900">{item.taskStatus}</p>
-                                </div>
-                                <div>
-                                  <span className="font-medium text-gray-700">Sound:</span>
-                                  <p className="text-gray-900">{item.soundOfMachine || "N/A"}</p>
-                                </div>
-                                <div>
-                                  <span className="font-medium text-gray-700">Temperature:</span>
-                                  <p className="text-gray-900">{item.temperature || "N/A"}</p>
-                                </div>
-                                <div>
-                                  <span className="font-medium text-gray-700">Cost:</span>
-                                  <p className="text-gray-900">{item.maintenanceCost || "N/A"}</p>
-                                </div>
-                                <div className="sm:col-span-2 lg:col-span-3">
-                                  <span className="font-medium text-gray-700">Description:</span>
-                                  <p className="text-gray-900">{item.description}</p>
-                                </div>
-                                {item.remarks && (
-                                  <div className="sm:col-span-2 lg:col-span-3">
-                                    <span className="font-medium text-gray-700">Remarks:</span>
-                                    <p className="text-gray-900">{item.remarks}</p>
-                                  </div>
-                                )}
-                                {item.image && (
-                                  <div className="sm:col-span-2 lg:col-span-3">
-                                    <span className="font-medium text-gray-700">Image:</span>
-                                    <img src={item.image} alt="Task" className="mt-2 h-32 w-32 object-cover rounded border" />
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Documents Tab */}
-            {activeTab === "documents" && (
-              <div>
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
-                  <h3 className="text-base font-medium">Documents</h3>
-                  <button
-                    onClick={() => setShowUploadForm(true)}
-                    className="px-4 py-2 text-xs text-white bg-sky-600 rounded-md hover:bg-sky-700 flex items-center w-full sm:w-auto justify-center"
-                  >
-                    <Upload size={16} className="mr-2" />
-                    Upload Document
-                  </button>
-                </div>
-
-                {/* Desktop Table View */}
-                <div className="hidden md:block overflow-x-auto border rounded-lg">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Document Name</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Uploaded By</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {documents.map((doc) => (
-                        <tr key={doc.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 text-xs font-medium text-sky-600">{doc.name}</td>
-                          <td className="px-6 py-4 text-xs text-gray-500">{doc.type}</td>
-                          <td className="px-6 py-4 text-xs text-gray-500">{doc.uploadedBy}</td>
-                          <td className="px-6 py-4 text-xs text-gray-500">{new Date(doc.date).toLocaleDateString()}</td>
-                          <td className="px-6 py-4 text-xs text-right">
-                            <button className="text-sky-600 hover:text-sky-900 mr-3">Download</button>
-                            <button
-                              onClick={() => handleDocumentDelete(doc.id)}
-                              className="text-red-600 hover:text-red-900"
-                            >
-                              Delete
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Mobile Card View */}
-                <div className="md:hidden space-y-4">
-                  {documents.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">No documents uploaded yet.</div>
-                  ) : (
-                    documents.map((doc) => (
-                      <div key={doc.id} className="border rounded-lg p-4 bg-white">
-                        <h4 className="font-medium text-sky-600 mb-2">{doc.name}</h4>
-                        <div className="space-y-2 text-xs">
-                          <div className="flex justify-between">
-                            <span className="text-gray-500">Type:</span>
-                            <span className="text-gray-900">{doc.type}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-500">Uploaded By:</span>
-                            <span className="text-gray-900">{doc.uploadedBy}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-500">Date:</span>
-                            <span className="text-gray-900">{new Date(doc.date).toLocaleDateString()}</span>
-                          </div>
-                        </div>
-                        <div className="flex gap-2 mt-4">
-                          <button className="flex-1 px-3 py-2 text-xs text-sky-600 border border-sky-600 rounded hover:bg-sky-50">
-                            Download
-                          </button>
-                          <button
-                            onClick={() => handleDocumentDelete(doc.id)}
-                            className="flex-1 px-3 py-2 text-xs text-red-600 border border-red-600 rounded hover:bg-red-50"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
+            <button
+              onClick={() => setShowStatusModal(true)}
+              className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 shadow-sm transition-colors"
+            >
+              <Wrench size={13} className="mr-1.5 text-gray-500" />
+              Update Status
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Update Status Modal */}
-      {showUpdateForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <div className="bg-white rounded-lg shadow-lg w-full max-w-md">
-            <div className="flex justify-between items-center p-4 border-b">
-              <h3 className="text-base font-medium">Update Task Status</h3>
-              <button onClick={() => setShowUpdateForm(false)} className="text-gray-500 hover:text-gray-700">
-                <X size={20} />
+      {/* Horizontal Row Layout: [✏️] [📋 Padding] [◷ History] */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        {/* Top Horizontal Row Navigation */}
+        <div className="border-b border-gray-200">
+          <nav
+            className="flex items-center space-x-2 sm:space-x-6 px-4 sm:px-6 overflow-x-auto"
+            aria-label="Task Navigation"
+          >
+            {/* 1. Details: Icon-only Pencil Button (No "Details" text) */}
+            <button
+              type="button"
+              onClick={() => setActiveSection("details")}
+              title="Details"
+              aria-label="Details"
+              className={`py-3 px-3 text-xs font-semibold whitespace-nowrap border-b-2 flex items-center justify-center transition-all ${activeSection === "details"
+                ? "border-sky-600 text-sky-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
+            >
+              <Pencil size={16} />
+            </button>
+
+            {/* 2. Padding: Clipboard icon with "Padding" text */}
+            <button
+              type="button"
+              onClick={() => setActiveSection("padding")}
+              className={`py-3 px-3 sm:px-4 text-xs font-semibold whitespace-nowrap border-b-2 flex items-center transition-all ${activeSection === "padding"
+                ? "border-sky-600 text-sky-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
+            >
+              <ClipboardList size={16} className="mr-2" />
+              <span>Padding</span>
+            </button>
+
+            {/* 3. History: History icon with "History" text */}
+            <button
+              type="button"
+              onClick={() => setActiveSection("history")}
+              className={`py-3 px-3 sm:px-4 text-xs font-semibold whitespace-nowrap border-b-2 flex items-center transition-all ${activeSection === "history"
+                ? "border-sky-600 text-sky-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
+            >
+              <History size={16} className="mr-2" />
+              <span>History</span>
+            </button>
+          </nav>
+        </div>
+
+        {/* Content Area */}
+        <div className="p-4 sm:p-6">
+          {/* SECTION 1: DETAILS */}
+          {activeSection === "details" && (
+            <div className="space-y-6">
+              {/* Summary 4-box Card */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-gray-50/70 border border-gray-200/80 rounded-lg p-4">
+                  <div className="flex items-center text-xs font-medium text-gray-500 mb-1">
+                    <User size={14} className="mr-1.5 text-gray-400" />
+                    Assignment
+                  </div>
+                  <div className="text-sm font-semibold text-gray-900">
+                    {task.assignedTo || "Unassigned"}
+                  </div>
+                </div>
+
+                <div className="bg-gray-50/70 border border-gray-200/80 rounded-lg p-4">
+                  <div className="flex items-center text-xs font-medium text-gray-500 mb-1">
+                    <MapPin size={14} className="mr-1.5 text-gray-400" />
+                    Location
+                  </div>
+                  <div className="text-sm font-semibold text-gray-900">
+                    {task.location || "On-site"}
+                  </div>
+                </div>
+
+                <div className="bg-gray-50/70 border border-gray-200/80 rounded-lg p-4">
+                  <div className="flex items-center text-xs font-medium text-gray-500 mb-1">
+                    <Calendar size={14} className="mr-1.5 text-gray-400" />
+                    Due Date
+                  </div>
+                  <div className="text-sm font-semibold text-gray-900">
+                    {formatDate(task.dueDate)}
+                  </div>
+                </div>
+
+                <div className="bg-gray-50/70 border border-gray-200/80 rounded-lg p-4">
+                  <div className="flex items-center text-xs font-medium text-gray-500 mb-1">
+                    <DollarSign size={14} className="mr-1.5 text-gray-400" />
+                    Estimated Cost
+                  </div>
+                  <div className="text-sm font-semibold text-gray-900">
+                    ${Number(task.estimatedCost || 0).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+
+              {/* Task Information & Schedule */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Section: Task Information */}
+                <div className="bg-white border border-gray-200 rounded-lg p-5">
+                  <h2 className="text-sm font-bold text-gray-900 mb-4 pb-2 border-b border-gray-100">
+                    Task Information
+                  </h2>
+                  <div className="space-y-3.5 text-xs">
+                    <div className="flex justify-between items-center py-1">
+                      <span className="text-gray-500">Task Type</span>
+                      <span className="font-semibold text-gray-900">{task.type}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1">
+                      <span className="text-gray-500">Department</span>
+                      <span className="font-semibold text-gray-900">{task.department}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1">
+                      <span className="text-gray-500">Status</span>
+                      <span>{getStatusBadge(task.status)}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1">
+                      <span className="text-gray-500">Priority</span>
+                      <span>{getPriorityBadge(task.priority)}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1">
+                      <span className="text-gray-500">Vendor</span>
+                      <span className="font-semibold text-gray-900">{task.vendor || "N/A"}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section: Schedule & Location */}
+                <div className="bg-white border border-gray-200 rounded-lg p-5">
+                  <h2 className="text-sm font-bold text-gray-900 mb-4 pb-2 border-b border-gray-100">
+                    Schedule & Location
+                  </h2>
+                  <div className="space-y-3.5 text-xs">
+                    <div className="flex justify-between items-center py-1">
+                      <span className="text-gray-500">Machine</span>
+                      <span className="font-semibold text-gray-900">{task.machineName}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1">
+                      <span className="text-gray-500">Location</span>
+                      <span className="font-semibold text-gray-900">{task.location}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1">
+                      <span className="text-gray-500">Due Date</span>
+                      <span className="font-semibold text-gray-900">{formatDate(task.dueDate)}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1">
+                      <span className="text-gray-500">Estimated Cost</span>
+                      <span className="font-semibold text-gray-900">
+                        ${Number(task.estimatedCost || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section: Description */}
+              <div className="bg-white border border-gray-200 rounded-lg p-5">
+                <h2 className="text-sm font-bold text-gray-900 mb-3 pb-2 border-b border-gray-100">
+                  Description
+                </h2>
+                <p className="text-xs text-gray-700 leading-relaxed">
+                  {task.description || "No description provided."}
+                </p>
+              </div>
+
+              {/* Section: Task Details */}
+              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                <div className="px-5 py-4 border-b border-gray-200 bg-gray-50/50">
+                  <h2 className="text-sm font-bold text-gray-900">Task Details</h2>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200 text-xs">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-5 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                          Task No
+                        </th>
+                        <th className="px-5 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                          Date
+                        </th>
+                        <th className="px-5 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                          Description
+                        </th>
+                        <th className="px-5 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                          Sound Test
+                        </th>
+                        <th className="px-5 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                          Temperature
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {task.detailsData.length > 0 ? (
+                        task.detailsData.map((detail) => (
+                          <tr key={detail.id} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-5 py-3.5 font-semibold text-gray-900 whitespace-nowrap">
+                              {detail.taskNo}
+                            </td>
+                            <td className="px-5 py-3.5 text-gray-600 whitespace-nowrap">
+                              {formatDate(detail.taskDate)}
+                            </td>
+                            <td className="px-5 py-3.5 text-gray-800">
+                              {detail.description}
+                            </td>
+                            <td className="px-5 py-3.5 text-gray-600 whitespace-nowrap">
+                              {detail.soundTest}
+                            </td>
+                            <td className="px-5 py-3.5 text-gray-600 whitespace-nowrap">
+                              {detail.temperature}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={5} className="px-5 py-6 text-center text-gray-400">
+                            No task details records available.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 2: PADDING (Checklist) */}
+          {activeSection === "padding" && (
+            <div className="space-y-4">
+              {/* Header with Title and Action Buttons */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-gray-100">
+                <div>
+                  <h2 className="text-sm font-bold text-gray-900">Padding</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Select checklist items and submit their latest status.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <button
+                    onClick={handleSelectAll}
+                    type="button"
+                    className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                  >
+                    {selectedItems.length === checklistItems.length ? (
+                      <>
+                        <Square size={13} className="mr-1.5" />
+                        Unselect All
+                      </>
+                    ) : (
+                      <>
+                        <CheckSquare size={13} className="mr-1.5" />
+                        Select All
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleSubmitChecklist}
+                    disabled={submittingChecklist || selectedItems.length === 0}
+                    type="button"
+                    className="inline-flex items-center px-4 py-1.5 text-xs font-semibold text-white bg-sky-600 rounded-md hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-colors"
+                  >
+                    <Save size={13} className="mr-1.5" />
+                    {submittingChecklist ? "Submitting..." : "Submit Padding"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Checklist Table */}
+              <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-xs">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200 text-xs">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-3.5 py-3 text-left w-10">
+                          <input
+                            type="checkbox"
+                            checked={
+                              checklistItems.length > 0 &&
+                              selectedItems.length === checklistItems.length
+                            }
+                            onChange={handleSelectAll}
+                            className="rounded border-gray-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                          />
+                        </th>
+                        <th className="px-3 py-3 text-left font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                          Task No.
+                        </th>
+                        <th className="px-3 py-3 text-left font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                          Department
+                        </th>
+                        <th className="px-3 py-3 text-left font-medium text-gray-500 uppercase tracking-wider min-w-[220px]">
+                          Description
+                        </th>
+                        <th className="px-3 py-3 text-left font-medium text-gray-500 uppercase tracking-wider min-w-[130px]">
+                          Status
+                        </th>
+                        <th className="px-3 py-3 text-left font-medium text-gray-500 uppercase tracking-wider min-w-[110px]">
+                          Image
+                        </th>
+                        <th className="px-3 py-3 text-left font-medium text-gray-500 uppercase tracking-wider min-w-[170px]">
+                          Remarks
+                        </th>
+                        <th className="px-3 py-3 text-left font-medium text-gray-500 uppercase tracking-wider min-w-[110px]">
+                          Sound
+                        </th>
+                        <th className="px-3 py-3 text-left font-medium text-gray-500 uppercase tracking-wider min-w-[110px]">
+                          Temperature
+                        </th>
+                        <th className="px-3 py-3 text-left font-medium text-gray-500 uppercase tracking-wider min-w-[95px]">
+                          Cost
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {checklistItems.map((item) => {
+                        const isSelected = selectedItems.includes(item.id);
+                        return (
+                          <tr
+                            key={item.id}
+                            className={`align-top transition-colors ${isSelected ? "bg-sky-50/40" : "hover:bg-gray-50/60"
+                              }`}
+                          >
+                            {/* Checkbox */}
+                            <td className="px-3.5 py-3">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => handleChecklistSelection(item.id)}
+                                className="rounded border-gray-300 text-sky-600 focus:ring-sky-500 cursor-pointer mt-1"
+                              />
+                            </td>
+
+                            {/* Task No. */}
+                            <td className="px-3 py-3 font-semibold text-gray-900 whitespace-nowrap">
+                              {item.taskNo}
+                            </td>
+
+                            {/* Department */}
+                            <td className="px-3 py-3 text-gray-600 whitespace-nowrap">
+                              {item.department}
+                            </td>
+
+                            {/* Description */}
+                            <td className="px-3 py-3 text-gray-800 leading-snug">
+                              {item.description}
+                            </td>
+
+                            {/* Status Dropdown */}
+                            <td className="px-3 py-3">
+                              <select
+                                value={item.taskStatus}
+                                onChange={(e) =>
+                                  handleChecklistChange(item.id, "taskStatus", e.target.value)
+                                }
+                                className="w-full px-2 py-1.5 text-xs bg-white border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-sky-500 font-medium"
+                              >
+                                <option value="pending">Pending</option>
+                                <option value="in-progress">In Progress</option>
+                                <option value="completed">Completed</option>
+                              </select>
+                              <div className="mt-1.5">
+                                {getChecklistStatusBadge(item.taskStatus)}
+                              </div>
+                            </td>
+
+                            {/* Image Upload */}
+                            <td className="px-3 py-3">
+                              {item.image ? (
+                                <div className="relative group w-14 h-14">
+                                  <img
+                                    src={item.image}
+                                    alt={item.taskNo}
+                                    className="w-14 h-14 object-cover rounded border border-gray-200"
+                                  />
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded flex items-center justify-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => setPreviewImage(item.image)}
+                                      title="View image"
+                                      className="p-1 bg-white text-gray-800 rounded-full hover:bg-gray-100"
+                                    >
+                                      <Eye size={11} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveImage(item.id)}
+                                      title="Remove image"
+                                      className="p-1 bg-white text-rose-600 rounded-full hover:bg-rose-50"
+                                    >
+                                      <Trash2 size={11} />
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <label className="inline-flex flex-col items-center justify-center w-14 h-14 border border-dashed border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 transition-colors text-gray-400 hover:text-gray-600">
+                                  <ImageIcon size={14} />
+                                  <span className="text-[10px] mt-0.5">Upload</span>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(e) => handleImageUpload(item.id, e)}
+                                  />
+                                </label>
+                              )}
+                            </td>
+
+                            {/* Remarks */}
+                            <td className="px-3 py-3">
+                              <textarea
+                                value={item.remarks}
+                                onChange={(e) =>
+                                  handleChecklistChange(item.id, "remarks", e.target.value)
+                                }
+                                placeholder="Enter remarks..."
+                                rows={2}
+                                className="w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-sky-500 placeholder-gray-400 resize-none"
+                              />
+                            </td>
+
+                            {/* Sound */}
+                            <td className="px-3 py-3">
+                              <div className="relative">
+                                <Volume2 size={13} className="absolute left-2 top-2 text-gray-400" />
+                                <input
+                                  type="text"
+                                  value={item.soundOfMachine}
+                                  onChange={(e) =>
+                                    handleChecklistChange(item.id, "soundOfMachine", e.target.value)
+                                  }
+                                  placeholder="N/A"
+                                  className="w-full pl-6 pr-2 py-1.5 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-sky-500 placeholder-gray-400"
+                                />
+                              </div>
+                            </td>
+
+                            {/* Temperature */}
+                            <td className="px-3 py-3">
+                              <div className="relative">
+                                <Thermometer size={13} className="absolute left-2 top-2 text-gray-400" />
+                                <input
+                                  type="text"
+                                  value={item.temperature}
+                                  onChange={(e) =>
+                                    handleChecklistChange(item.id, "temperature", e.target.value)
+                                  }
+                                  placeholder="N/A"
+                                  className="w-full pl-6 pr-2 py-1.5 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-sky-500 placeholder-gray-400"
+                                />
+                              </div>
+                            </td>
+
+                            {/* Cost */}
+                            <td className="px-3 py-3">
+                              <div className="relative">
+                                <DollarSign size={13} className="absolute left-1.5 top-2 text-gray-400" />
+                                <input
+                                  type="text"
+                                  value={item.maintenanceCost}
+                                  onChange={(e) =>
+                                    handleChecklistChange(item.id, "maintenanceCost", e.target.value)
+                                  }
+                                  placeholder="0"
+                                  className="w-full pl-5 pr-2 py-1.5 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-sky-500 placeholder-gray-400"
+                                />
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 3: HISTORY */}
+          {activeSection === "history" && (
+            <div className="space-y-4">
+              <div className="pb-3 border-b border-gray-100">
+                <h2 className="text-sm font-bold text-gray-900">Checklist History</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Submitted checklist records.</p>
+              </div>
+
+              {history.length === 0 ? (
+                /* Clean empty state */
+                <div className="bg-gray-50/70 border border-gray-200 rounded-lg p-10 text-center">
+                  <History size={28} className="mx-auto text-gray-400 mb-2" />
+                  <p className="text-xs font-medium text-gray-500">
+                    No history found.
+                  </p>
+                </div>
+              ) : (
+                /* Submitted History List / Tables */
+                <div className="space-y-4">
+                  {history.map((record) => (
+                    <div
+                      key={record.id}
+                      className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-xs"
+                    >
+                      <div className="bg-gray-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 border-b border-gray-200">
+                        <div>
+                          <span className="text-xs font-bold text-gray-900 mr-2">
+                            {record.action}
+                          </span>
+                          <span className="text-[11px] text-gray-500">
+                            by <span className="font-medium text-gray-700">{record.submittedBy}</span>
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-gray-500">
+                          {formatDateTime(record.submittedAt)}
+                        </span>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200 text-xs">
+                          <thead className="bg-white">
+                            <tr>
+                              <th className="px-3.5 py-2.5 text-left font-medium text-gray-500 uppercase tracking-wider">
+                                Task No.
+                              </th>
+                              <th className="px-3 py-2.5 text-left font-medium text-gray-500 uppercase tracking-wider">
+                                Department
+                              </th>
+                              <th className="px-3 py-2.5 text-left font-medium text-gray-500 uppercase tracking-wider">
+                                Status
+                              </th>
+                              <th className="px-3 py-2.5 text-left font-medium text-gray-500 uppercase tracking-wider">
+                                Sound
+                              </th>
+                              <th className="px-3 py-2.5 text-left font-medium text-gray-500 uppercase tracking-wider">
+                                Temperature
+                              </th>
+                              <th className="px-3 py-2.5 text-left font-medium text-gray-500 uppercase tracking-wider">
+                                Cost
+                              </th>
+                              <th className="px-3 py-2.5 text-left font-medium text-gray-500 uppercase tracking-wider">
+                                Remarks
+                              </th>
+                              <th className="px-3 py-2.5 text-left font-medium text-gray-500 uppercase tracking-wider">
+                                Description
+                              </th>
+                              <th className="px-3 py-2.5 text-left font-medium text-gray-500 uppercase tracking-wider">
+                                Image
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {(record.items || []).map((subItem, idx) => (
+                              <tr key={`${record.id}-${subItem.id || idx}`} className="hover:bg-gray-50/50">
+                                <td className="px-3.5 py-3 font-semibold text-gray-900 whitespace-nowrap">
+                                  {subItem.taskNo}
+                                </td>
+                                <td className="px-3 py-3 text-gray-600 whitespace-nowrap">
+                                  {subItem.department}
+                                </td>
+                                <td className="px-3 py-3 whitespace-nowrap">
+                                  {getChecklistStatusBadge(subItem.taskStatus)}
+                                </td>
+                                <td className="px-3 py-3 text-gray-600 whitespace-nowrap">
+                                  {subItem.soundOfMachine || "N/A"}
+                                </td>
+                                <td className="px-3 py-3 text-gray-600 whitespace-nowrap">
+                                  {subItem.temperature || "N/A"}
+                                </td>
+                                <td className="px-3 py-3 text-gray-600 whitespace-nowrap">
+                                  {subItem.maintenanceCost ? `$${subItem.maintenanceCost}` : "N/A"}
+                                </td>
+                                <td className="px-3 py-3 text-gray-700 max-w-xs">
+                                  {subItem.remarks || "—"}
+                                </td>
+                                <td className="px-3 py-3 text-gray-800 max-w-sm">
+                                  {subItem.description || "—"}
+                                </td>
+                                <td className="px-3 py-3 whitespace-nowrap">
+                                  {subItem.image ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setPreviewImage(subItem.image)}
+                                      className="inline-flex items-center text-sky-600 hover:text-sky-800 text-[11px] font-medium"
+                                    >
+                                      <ImageIcon size={12} className="mr-1" />
+                                      View Image
+                                    </button>
+                                  ) : (
+                                    <span className="text-gray-400">—</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Modal: Update Status */}
+      {showStatusModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-lg shadow-xl border border-gray-200 max-w-sm w-full p-5 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+              <h3 className="text-sm font-bold text-gray-900">Update Task Status</h3>
+              <button
+                onClick={() => setShowStatusModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={16} />
               </button>
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); alert("Status updated!"); setShowUpdateForm(false); }}>
-              <div className="p-4 space-y-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Status</label>
-                  <select className="w-full px-3 py-2 border rounded-md">
-                    <option value="pending">Pending</option>
-                    <option value="in-progress">In Progress</option>
-                    <option value="completed">Completed</option>
-                    <option value="overdue">Overdue</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Update Notes</label>
-                  <textarea rows={3} className="w-full px-3 py-2 border rounded-md" placeholder="Enter notes..."></textarea>
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 p-4 border-t">
-                <button
-                  type="button"
-                  onClick={() => setShowUpdateForm(false)}
-                  className="px-4 py-2 text-gray-700 border rounded-md hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="px-4 py-2 text-white bg-sky-600 rounded-md hover:bg-sky-700">
-                  Update
-                </button>
-              </div>
-            </form>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                Select Status
+              </label>
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className="w-full px-3 py-2 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-sky-500 font-medium"
+              >
+                <option value="scheduled">Scheduled / Pending</option>
+                <option value="in-progress">In Progress</option>
+                <option value="completed">Completed</option>
+                <option value="overdue">Overdue</option>
+              </select>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowStatusModal(false)}
+                className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveStatus}
+                disabled={statusUpdating}
+                className="px-3.5 py-1.5 text-xs font-semibold text-white bg-sky-600 rounded-md hover:bg-sky-700 disabled:opacity-50 transition-colors"
+              >
+                {statusUpdating ? "Saving..." : "Save Status"}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Upload Document Modal */}
-      {showUploadForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <div className="bg-white rounded-lg shadow-lg w-full max-w-md">
-            <div className="flex justify-between items-center p-4 border-b">
-              <h3 className="text-base font-medium">Upload Document</h3>
-              <button onClick={() => { setShowUploadForm(false); setUploadFile(null); }} className="text-gray-500 hover:text-gray-700">
-                <X size={20} />
+      {/* Modal: Image Preview */}
+      {previewImage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-white rounded-lg shadow-2xl max-w-lg w-full p-4 space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+              <h3 className="text-xs font-semibold text-gray-800">Checklist Image Preview</h3>
+              <button
+                onClick={() => setPreviewImage(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={16} />
               </button>
             </div>
-            <form onSubmit={handleUploadSubmit}>
-              <div className="p-4">
-                <label className="block text-xs font-medium text-gray-700 mb-1">Select File</label>
-                <input
-                  type="file"
-                  accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png"
-                  onChange={handleFileChange}
-                  className="w-full px-3 py-2 border rounded-md"
-                  required
-                />
-                {uploadFile && <p className="mt-2 text-xs text-gray-600">Selected: {uploadFile.name}</p>}
-              </div>
-              <div className="flex justify-end gap-2 p-4 border-t">
-                <button
-                  type="button"
-                  onClick={() => { setShowUploadForm(false); setUploadFile(null); }}
-                  className="px-4 py-2 text-gray-700 border rounded-md hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!uploadFile}
-                  className="px-4 py-2 text-white bg-sky-600 rounded-md hover:bg-sky-700 disabled:bg-gray-400"
-                >
-                  Upload
-                </button>
-              </div>
-            </form>
+            <div className="max-h-[70vh] overflow-auto flex items-center justify-center bg-gray-50 rounded">
+              <img src={previewImage} alt="Preview" className="max-w-full max-h-[60vh] object-contain rounded" />
+            </div>
+            <div className="flex justify-end pt-1">
+              <button
+                onClick={() => setPreviewImage(null)}
+                className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

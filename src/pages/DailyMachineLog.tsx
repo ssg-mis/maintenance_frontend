@@ -1,11 +1,20 @@
-import React, { useState } from 'react';
-import { Activity, Plus, Filter, Thermometer, Clock, User, MessageSquare } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import {
+  Activity,
+  Plus,
+  Filter,
+  Thermometer,
+  Clock,
+  User,
+  MessageSquare,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
-import useDailyLogStore from '../store/dailyLogStore';
 import { runRulesForMachine } from '../services/ruleEngine';
 import { machineMasterData } from '../services/ruleEngine';
 import { DailyMachineLog } from '../models/types';
 import Modal from '../components/Modal';
+import useAuthStore from '../store/authStore';
+import { canModifyPage } from '../services/permissionService';
 
 const initialForm = {
   machineId: '',
@@ -18,12 +27,118 @@ const initialForm = {
 };
 
 const DailyMachineLogPage: React.FC = () => {
-  const { logs, addLog } = useDailyLogStore();
+  const token = useAuthStore((state) => state.token);
+  const user = useAuthStore((state) => state.user);
+  const canModify = canModifyPage(user, "daily-machine-log");
+
+  const [logs, setLogs] = useState<DailyMachineLog[]>([]);
+  const [machines, setMachines] = useState<any[]>([]);
   const [form, setForm] = useState(initialForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [filterMachineId, setFilterMachineId] = useState('all');
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+
+    const loadLogs = async () => {
+      try {
+        const response = await fetch(
+          'http://localhost:5000/api/daily-logs',
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          throw new Error(
+            result.message || 'Failed to load daily logs'
+          );
+        }
+
+        const backendLogs = Array.isArray(result.data)
+          ? result.data
+          : [];
+
+        const normalizedLogs: DailyMachineLog[] =
+          backendLogs.map((log: any, index: number) => {
+            const machineId = Number(
+              log?.machineId ??
+                log?.machine_id ??
+                log?.machine?.id ??
+                0
+            );
+
+            const machine = machineMasterData.find(
+              (m) => m.id === machineId
+            );
+
+            return {
+              id: Number(log?.id) || index + 1,
+              machineId,
+              machineName:
+                log?.machineName ??
+                log?.machine_name ??
+                log?.machine?.name ??
+                machine?.name ??
+                'Unknown',
+              date:
+                log?.date ??
+                log?.logDate ??
+                log?.log_date ??
+                '',
+              runtimeHours: Number(
+                log?.runtimeHours ??
+                  log?.runtime_hours ??
+                  0
+              ),
+              temperature: Number(
+                log?.temperature ?? 0
+              ),
+              load: Number(log?.load ?? 0),
+              operatorName:
+                log?.operatorName ??
+                log?.operator_name ??
+                '',
+              remarks: log?.remarks ?? '',
+            };
+          });
+
+        setLogs(normalizedLogs);
+      } catch (error: any) {
+        console.error(
+          'Daily logs API error:',
+          error
+        );
+
+        toast.error(
+          error?.message ||
+            'Failed to load daily logs.'
+        );
+      }
+    };
+
+    loadLogs();
+
+    // Fetch live machines from backend
+    if (token) {
+      fetch('http://localhost:5000/api/machines', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => r.json())
+        .then((res) => {
+          if (res.success && Array.isArray(res.data)) {
+            setMachines(res.data);
+          }
+        })
+        .catch((err) => console.error("Error fetching machines in DailyMachineLog:", err));
+    }
+  }, [token]);
 
   const filteredLogs: DailyMachineLog[] =
     filterMachineId === 'all'
@@ -48,33 +163,130 @@ const DailyMachineLogPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     const errs = validate();
-    if (Object.keys(errs).length > 0) { setErrors(errs); return; }
+
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs);
+      return;
+    }
+
     setErrors({});
     setSubmitting(true);
 
-    const machine = machineMasterData.find((m) => m.id === Number(form.machineId));
-    addLog({
-      machineId: Number(form.machineId),
-      machineName: machine?.name ?? 'Unknown',
-      date: form.date,
-      runtimeHours: Number(form.runtimeHours),
-      temperature: Number(form.temperature),
-      load: Number(form.load),
-      operatorName: form.operatorName.trim(),
-      remarks: form.remarks.trim(),
-    });
+    try {
+      const machine = (machines.length > 0 ? machines : machineMasterData).find(
+        (m) => m.id === Number(form.machineId)
+      );
 
-    toast.success('Daily log submitted successfully!');
-    setForm({ ...initialForm, date: new Date().toISOString().slice(0, 10) });
-    setShowForm(false);
+      const response = await fetch(
+        'http://localhost:5000/api/daily-logs',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            machineId: Number(form.machineId),
+            date: form.date,
+            runtimeHours: Number(form.runtimeHours),
+            temperature: Number(form.temperature),
+            load: Number(form.load),
+            operatorName: form.operatorName.trim(),
+            remarks: form.remarks.trim(),
+          }),
+        }
+      );
 
-    // Run rule engine after adding log
-    setTimeout(() => {
-      runRulesForMachine(Number(form.machineId));
-    }, 500);
+      const result = await response.json();
 
-    setSubmitting(false);
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.message ||
+            'Daily log save failed'
+        );
+      }
+
+      const savedLog = result.data || {};
+
+      const newLog: DailyMachineLog = {
+        id: Number(savedLog?.id) || Date.now(),
+        machineId: Number(
+          savedLog?.machineId ??
+            savedLog?.machine_id ??
+            form.machineId
+        ),
+        machineName:
+          savedLog?.machineName ??
+          savedLog?.machine_name ??
+          savedLog?.machine?.name ??
+          machine?.name ??
+          'Unknown',
+        date:
+          savedLog?.date ??
+          savedLog?.logDate ??
+          savedLog?.log_date ??
+          form.date,
+        runtimeHours: Number(
+          savedLog?.runtimeHours ??
+            savedLog?.runtime_hours ??
+            form.runtimeHours
+        ),
+        temperature: Number(
+          savedLog?.temperature ??
+            form.temperature
+        ),
+        load: Number(
+          savedLog?.load ??
+            form.load
+        ),
+        operatorName:
+          savedLog?.operatorName ??
+          savedLog?.operator_name ??
+          form.operatorName.trim(),
+        remarks:
+          savedLog?.remarks ??
+          form.remarks.trim(),
+      };
+
+      setLogs((previous) => [
+        newLog,
+        ...previous,
+      ]);
+
+      toast.success(
+        'Daily log submitted successfully!'
+      );
+
+      setForm({
+        ...initialForm,
+        date: new Date()
+          .toISOString()
+          .slice(0, 10),
+      });
+
+      setShowForm(false);
+
+      // Run rule engine after adding log
+      setTimeout(() => {
+        runRulesForMachine(
+          Number(form.machineId)
+        );
+      }, 500);
+    } catch (error: any) {
+      console.error(
+        'Daily log save error:',
+        error
+      );
+
+      toast.error(
+        error?.message ||
+          'Failed to save daily log.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const inputCls = (field: string) =>
@@ -95,13 +307,19 @@ const DailyMachineLogPage: React.FC = () => {
           </h1>
           <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1 ml-11">Operational Intelligence</p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center justify-center gap-2 px-6 py-3 bg-sky-600 text-white rounded-xl hover:bg-sky-700 transition-all text-sm font-black shadow-xl shadow-sky-100 hover:-translate-y-0.5 active:scale-95 uppercase tracking-widest w-full sm:w-auto"
-        >
-          <Plus size={18} />
-          Add Log Entry
-        </button>
+        {canModify ? (
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center justify-center gap-2 px-6 py-3 bg-sky-600 text-white rounded-xl hover:bg-sky-700 transition-all text-sm font-black shadow-xl shadow-sky-100 hover:-translate-y-0.5 active:scale-95 uppercase tracking-widest w-full sm:w-auto"
+          >
+            <Plus size={18} />
+            Add Log Entry
+          </button>
+        ) : (
+          <span className="inline-flex items-center px-4 py-2 text-xs font-semibold text-gray-500 bg-gray-100 rounded-xl border border-gray-200">
+            View Only Mode
+          </span>
+        )}
       </div>
 
       {/* Modal Form */}
@@ -122,7 +340,7 @@ const DailyMachineLogPage: React.FC = () => {
                 onChange={(e) => setForm({ ...form, machineId: e.target.value })}
               >
                 <option value="">Select Machine...</option>
-                {machineMasterData.map((m) => (
+                {(machines.length > 0 ? machines : machineMasterData).map((m) => (
                   <option key={m.id} value={m.id}>{m.name}</option>
                 ))}
               </select>
@@ -251,8 +469,23 @@ const DailyMachineLogPage: React.FC = () => {
 
       {/* Stats Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {machineMasterData.slice(0, 4).map((m) => {
-          const runtime = useDailyLogStore.getState().getTotalRuntime(m.id, 30);
+        {(machines.length > 0 ? machines : machineMasterData).slice(0, 4).map((m) => {
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+          const runtime = logs
+            .filter((log) => {
+              return (
+                log.machineId === m.id &&
+                new Date(log.date).getTime() >=
+                  thirtyDaysAgo.getTime()
+              );
+            })
+            .reduce(
+              (sum, log) =>
+                sum + Number(log.runtimeHours || 0),
+              0
+            );
           const pct = Math.min(Math.round((runtime / m.runtimeThreshold) * 100), 100);
           return (
             <div key={m.id} className="bg-white rounded-2xl shadow-lg border border-gray-100 p-5 hover:shadow-xl transition-all hover:-translate-y-1">

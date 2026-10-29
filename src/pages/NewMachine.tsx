@@ -1,9 +1,65 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import useAuthStore from '../store/authStore';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Upload, CalendarPlus, Plus, Minus } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const NewMachine = () => {
+    const { id } = useParams<{ id: string }>();
+    const navigate = useNavigate();
+    const token = useAuthStore((state) => state.token);
+
+  useEffect(() => {
+    if (!id || !token) return;
+
+    fetch(`http://localhost:5000/api/machines/${id}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+      .then((res) => res.json())
+      .then((result) => {
+        if (!result.success) {
+          toast.error("Machine data load nahi hua");
+          return;
+        }
+
+        const machine = result.data;
+const setValue = (fieldId, value) => {
+  const field = document.getElementById(fieldId);
+
+  if (field) {
+    const dateFields = [
+      "purchaseDate",
+      "warrantyExpiration",
+      "initialSchedule",
+    ];
+
+    if (dateFields.includes(fieldId) && value) {
+      field.value = String(value).slice(0, 10);
+    } else {
+      field.value = value ?? "";
+    }
+  }
+};
+
+        setValue("name", machine.name);
+        setValue("serialNumber", machine.serialNumber);
+        setValue("model", machine.model);
+        setValue("manufacturer", machine.manufacturer);
+        setValue("department", machine.department);
+        setValue("location", machine.location);
+        setValue("purchaseDate", machine.purchaseDate);
+        setValue("purchasePrice", machine.purchasePrice);
+        setValue("vendor", machine.vendor);
+        setValue("warrantyExpiration", machine.warrantyExpiration);
+        setValue("initialSchedule", machine.nextMaintenance);
+      })
+      .catch((error) => {
+        console.error("Machine API error:", error);
+        toast.error("Machine data load nahi hua");
+      });
+  }, [id, token]);
   const [machineImage, setMachineImage] = useState(null);
   const [specifications, setSpecifications] = useState([{ name: '', value: '' }]);
   const [maintenanceParts, setMaintenanceParts] = useState([]);
@@ -53,10 +109,104 @@ const NewMachine = () => {
     setMaintenanceParts(newParts);
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    toast.success('Machine successfully added to inventory');
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+
+  const getValue = (fieldId: string) => {
+    const field = document.getElementById(fieldId) as
+      | HTMLInputElement
+      | HTMLSelectElement
+      | null;
+
+    return field?.value ?? "";
   };
+
+  const selectedSchedules: string[] = [];
+  ["monthly", "quarterly", "biannual", "annual"].forEach((schedId) => {
+    const el = document.getElementById(schedId) as HTMLInputElement | null;
+    if (el && el.checked) {
+      selectedSchedules.push(schedId);
+    }
+  });
+
+  const machineData = {
+    name: getValue("name"),
+    serialNumber: getValue("serialNumber"),
+    model: getValue("model"),
+    manufacturer: getValue("manufacturer"),
+    department: getValue("department"),
+    location: getValue("location"),
+    status: "operational",
+    purchaseDate: getValue("purchaseDate") || null,
+    purchasePrice: Number(getValue("purchasePrice") || 0),
+    vendor: getValue("vendor"),
+    warrantyExpiration: getValue("warrantyExpiration") || null,
+    nextMaintenance: getValue("initialSchedule") || null,
+    maintenanceSchedule: selectedSchedules,
+    maintenanceParts: maintenanceParts.filter((p: string) => Boolean(p && p.trim())),
+    image: machineImage || null,
+  };
+
+  if (!machineData.name.trim()) {
+    toast.error("Machine Name is required");
+    return;
+  }
+
+  if (!token) {
+    toast.error("Please login to save machine");
+    return;
+  }
+
+  try {
+    if (!id) {
+      // Create new machine in PostgreSQL database
+      const response = await fetch("http://localhost:5000/api/machines", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(machineData),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        toast.error(result.message || "Machine creation failed");
+        return;
+      }
+
+      toast.success("Machine successfully added to inventory");
+      navigate("/machines");
+    } else {
+      // Update existing machine in PostgreSQL database
+      const response = await fetch(
+        `http://localhost:5000/api/machines/${id}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(machineData),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        toast.error(result.message || "Machine update failed");
+        return;
+      }
+
+      toast.success("Machine successfully updated");
+      navigate("/machines");
+    }
+  } catch (error: any) {
+    console.error("Machine save error:", error);
+    toast.error(error?.message || "Failed to save machine");
+  }
+};
 
   return (
     <div className="space-y-6 p-4 md:p-0">
@@ -65,7 +215,9 @@ const NewMachine = () => {
           <ChevronLeft size={20} />
           <span>Back to Machines</span>
         </Link>
-        <h1 className="text-xl font-bold text-gray-800">Add New Machine</h1>
+    <h1 className="text-xl font-bold text-gray-800">
+  {id ? 'Edit Machine' : 'Add New Machine'}
+</h1>
       </div>
 
       <div className="bg-white rounded-lg shadow-lg">

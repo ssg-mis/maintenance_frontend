@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import useAuthStore from "../store/authStore";
+import { canModifyPage } from "../services/permissionService";
 import {
   CheckCircle,
   Clock,
@@ -9,82 +11,109 @@ import {
   ArrowDown,
 } from "lucide-react";
 
-// --- DUMMY DATA ---
-const mockTasks = [
-  {
-    id: 1001,
-    department: "Manufacturing",
-    description: "Replace worn bearing on Hydraulic Press HP-102.",
-    taskStatus: "Pending",
-    image: "/path/to/img1001.jpg",
-    remarks: "Bearing noise high, replacement urgent.",
-    soundOfMachine: "Loud grinding/squeal (120dB)",
-    temperature: "85°C (High)",
-    maintenanceCost: 450,
-    machineName: "HP-102",
-  },
-  {
-    id: 1002,
-    department: "Packaging",
-    description: "Conveyor Belt CB-201 alignment and tension check.",
-    taskStatus: "Approved",
-    image: "/path/to/img1002.jpg",
-    remarks: "Minor misalignment fixed, approved by Admin.",
-    soundOfMachine: "Normal operation (70dB)",
-    temperature: "45°C (Normal)",
-    maintenanceCost: 120,
-    machineName: "CB-201",
-  },
-  {
-    id: 1003,
-    department: "Production",
-    description: "Industrial Oven IO-103 thermostat calibration.",
-    taskStatus: "Pending",
-    image: "/path/to/img1003.jpg",
-    remarks: "Temperature drift detected, calibration needed.",
-    soundOfMachine: "Standard fan noise (65dB)",
-    temperature: "205°C (Target)",
-    maintenanceCost: 280,
-    machineName: "IO-103",
-  },
-  {
-    id: 1004,
-    department: "Manufacturing",
-    description: "CNC Machine CNC-305 software update and diagnostics.",
-    taskStatus: "Rejected",
-    image: "/path/to/img1004.jpg",
-    remarks: "Update rejected, conflicting with current production software. Re-evaluate.",
-    soundOfMachine: "Standard operation (80dB)",
-    temperature: "55°C (Normal)",
-    maintenanceCost: 0,
-    machineName: "CNC-305",
-  },
-  {
-    id: 1005,
-    department: "Manufacturing",
-    description: "Check fluid levels on Injection Molder IM-405.",
-    taskStatus: "Approved",
-    image: "/path/to/img1005.jpg",
-    remarks: "Levels checked and topped up. Approved.",
-    soundOfMachine: "Low humming (75dB)",
-    temperature: "60°C (Normal)",
-    maintenanceCost: 50,
-    machineName: "IM-405",
-  },
-];
-
 const AdminApproval = () => {
-  const [tasks, setTasks] = useState(mockTasks);
-  const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
+  const token = useAuthStore((state) => state.token);
+  const user = useAuthStore((state) => state.user);
+  const canModify = canModifyPage(user, "admin-approval");
+
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<(string | number)[]>(
+    [],
+  );
   const [activeTab, setActiveTab] = useState("Pending");
   const [sortColumn, setSortColumn] = useState("id");
   const [sortDirection, setSortDirection] = useState("asc");
+  const [counts, setCounts] = useState({ pending: 0, history: 0 });
 
+  /* =========================================
+     LOAD APPROVALS FROM BACKEND
+  ========================================= */
+  const loadApprovals = useCallback(
+    async (tab: "pending" | "history") => {
+      if (!token) {
+        setTasks([]);
+        setSelectedTaskIds([]);
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `http://localhost:5000/api/tasks/admin-approvals?tab=${tab}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          throw new Error(result.message || "Failed to load approvals");
+        }
+
+        setTasks(Array.isArray(result.data) ? result.data : []);
+        if (result.counts) {
+          setCounts({
+            pending: Number(result.counts.pending || 0),
+            history: Number(result.counts.history || 0),
+          });
+        }
+        setSelectedTaskIds([]);
+      } catch (error) {
+        console.error("Admin Approval API error:", error);
+      }
+    },
+    [token],
+  );
+
+  useEffect(() => {
+    void loadApprovals(activeTab === "History" ? "history" : "pending");
+  }, [loadApprovals, activeTab]);
+
+  /* =========================================
+     SUBMIT APPROVAL DECISION TO BACKEND
+  ========================================= */
+  const submitReview = async (
+    taskId: string | number,
+    status: "approved" | "rejected",
+  ) => {
+    if (!token) {
+      throw new Error("Please login again.");
+    }
+
+    const response = await fetch(
+      `http://localhost:5000/api/tasks/admin-approvals/${encodeURIComponent(
+        String(taskId),
+      )}/review`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status }),
+      },
+    );
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || `Failed to ${status} task`);
+    }
+
+    return result;
+  };
+
+  /* =========================================
+     FILTER AND SORT TASKS
+  ========================================= */
   const filteredTasks = tasks
     .filter((task) => {
       if (activeTab === "Pending") {
         return task.taskStatus === "Pending";
       }
+
       return task.taskStatus === "Approved" || task.taskStatus === "Rejected";
     })
     .sort((a, b) => {
@@ -94,19 +123,24 @@ const AdminApproval = () => {
       if (typeof aValue === "number" && typeof bValue === "number") {
         return sortDirection === "asc" ? aValue - bValue : bValue - aValue;
       }
+
       if (typeof aValue === "string" && typeof bValue === "string") {
         return sortDirection === "asc"
           ? aValue.localeCompare(bValue)
           : bValue.localeCompare(aValue);
       }
+
       return 0;
     });
 
-  const handleSelectTask = (taskId) => {
+  /* =========================================
+     SELECT TASKS
+  ========================================= */
+  const handleSelectTask = (taskId: string | number) => {
     setSelectedTaskIds((prev) =>
       prev.includes(taskId)
         ? prev.filter((id) => id !== taskId)
-        : [...prev, taskId]
+        : [...prev, taskId],
     );
   };
 
@@ -118,53 +152,89 @@ const AdminApproval = () => {
     }
   };
 
-  const handleApproveSelected = () => {
+  /* =========================================
+     APPROVE OR REJECT SELECTED TASKS
+  ========================================= */
+  const handleBulkReview = async (status: "approved" | "rejected") => {
     if (selectedTaskIds.length === 0) {
-      alert("Please select at least one task to approve.");
+      alert(`Please select at least one task to ${status}.`);
       return;
     }
-    setTasks((prevTasks) =>
-      prevTasks.map((task) =>
-        selectedTaskIds.includes(task.id) && task.taskStatus === "Pending"
-          ? { ...task, taskStatus: "Approved" }
-          : task
-      )
-    );
-    setSelectedTaskIds([]);
-  };
 
-  const handleRejectSelected = () => {
-    if (selectedTaskIds.length === 0) {
-      alert("Please select at least one task to reject.");
+    const pendingIds = selectedTaskIds.filter((id) =>
+      tasks.some((task) => task.id === id && task.taskStatus === "Pending"),
+    );
+
+    if (pendingIds.length === 0) {
+      alert("No pending tasks selected.");
       return;
     }
-    setTasks((prevTasks) =>
-      prevTasks.map((task) =>
-        selectedTaskIds.includes(task.id) && task.taskStatus === "Pending"
-          ? { ...task, taskStatus: "Rejected" }
-          : task
-      )
-    );
-    setSelectedTaskIds([]);
+
+    try {
+      for (const id of pendingIds) {
+        await submitReview(id, status);
+      }
+
+      await loadApprovals("pending");
+    } catch (error: any) {
+      console.error("Bulk approval error:", error);
+
+      alert(error?.message || `Failed to ${status} selected tasks.`);
+
+      // Reload to show the actual saved database status.
+      await loadApprovals(activeTab === "History" ? "history" : "pending");
+    }
   };
 
-  const handleApproveTask = (taskId: number) => {
-    setTasks((prev) =>
-      prev.map((task) =>
-        task.id === taskId ? { ...task, taskStatus: "Approved" } : task
-      )
-    );
+  const handleApproveSelected = async () => {
+    await handleBulkReview("approved");
   };
 
-  const handleRejectTask = (taskId: number) => {
-    setTasks((prev) =>
-      prev.map((task) =>
-        task.id === taskId ? { ...task, taskStatus: "Rejected" } : task
-      )
-    );
+  const handleRejectSelected = async () => {
+    await handleBulkReview("rejected");
   };
 
-  const handleSort = (column) => {
+  /* =========================================
+     APPROVE OR REJECT SINGLE TASK
+  ========================================= */
+  const handleApproveTask = async (taskId: string | number) => {
+    const task = tasks.find((item) => item.id === taskId);
+
+    if (!task || task.taskStatus !== "Pending") {
+      return;
+    }
+
+    try {
+      await submitReview(taskId, "approved");
+      await loadApprovals("pending");
+    } catch (error: any) {
+      console.error("Approve task error:", error);
+
+      alert(error?.message || "Failed to approve task.");
+    }
+  };
+
+  const handleRejectTask = async (taskId: string | number) => {
+    const task = tasks.find((item) => item.id === taskId);
+
+    if (!task || task.taskStatus !== "Pending") {
+      return;
+    }
+
+    try {
+      await submitReview(taskId, "rejected");
+      await loadApprovals("pending");
+    } catch (error: any) {
+      console.error("Reject task error:", error);
+
+      alert(error?.message || "Failed to reject task.");
+    }
+  };
+
+  /* =========================================
+     SORTING
+  ========================================= */
+  const handleSort = (column: string) => {
     if (sortColumn === column) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     } else {
@@ -173,7 +243,7 @@ const AdminApproval = () => {
     }
   };
 
-  const getSortIcon = (column) => {
+  const getSortIcon = (column: string) => {
     if (sortColumn === column) {
       return sortDirection === "asc" ? (
         <ArrowUp size={14} className="ml-1" />
@@ -181,10 +251,14 @@ const AdminApproval = () => {
         <ArrowDown size={14} className="ml-1" />
       );
     }
+
     return null;
   };
 
-  const getStatusBadge = (status) => {
+  /* =========================================
+     STATUS BADGE
+  ========================================= */
+  const getStatusBadge = (status: string) => {
     switch (status) {
       case "Pending":
         return (
@@ -193,6 +267,7 @@ const AdminApproval = () => {
             Pending
           </span>
         );
+
       case "Approved":
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
@@ -200,6 +275,7 @@ const AdminApproval = () => {
             Approved
           </span>
         );
+
       case "Rejected":
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
@@ -207,6 +283,7 @@ const AdminApproval = () => {
             Rejected
           </span>
         );
+
       default:
         return null;
     }
@@ -232,9 +309,10 @@ const AdminApproval = () => {
                 }`}
               >
                 <span className="hidden sm:inline">Pending Approvals </span>
-                <span className="sm:hidden">Pending </span>
-                ({tasks.filter((t) => t.taskStatus === "Pending").length})
+                <span className="sm:hidden">Pending </span>(
+                {counts.pending})
               </button>
+
               <button
                 onClick={() => setActiveTab("History")}
                 className={`flex-1 md:flex-none px-3 md:px-6 py-2.5 text-xs md:text-xs font-medium rounded-t-lg transition-all duration-150 ${
@@ -244,13 +322,18 @@ const AdminApproval = () => {
                 }`}
               >
                 <span className="hidden sm:inline">History </span>
-                <span className="sm:hidden">History </span>
-                ({tasks.filter((t) => t.taskStatus !== "Pending").length})
+                <span className="sm:hidden">History </span>(
+                {counts.history})
               </button>
             </div>
 
             <div className="flex items-center gap-2 p-2">
-              {activeTab === "Pending" && selectedTaskIds.length > 0 && (
+              {!canModify && (
+                <span className="px-3 py-1 text-xs font-semibold text-gray-500 bg-gray-100 rounded-lg">
+                  View Only Mode
+                </span>
+              )}
+              {canModify && activeTab === "Pending" && selectedTaskIds.length > 0 && (
                 <>
                   <button
                     onClick={handleApproveSelected}
@@ -259,6 +342,7 @@ const AdminApproval = () => {
                     <ThumbsUp size={14} className="mr-1.5" />
                     Approve ({selectedTaskIds.length})
                   </button>
+
                   <button
                     onClick={handleRejectSelected}
                     className="inline-flex items-center justify-center px-4 py-1.5 text-xs font-medium rounded-lg shadow-lg text-white bg-red-600 hover:bg-red-700 active:bg-red-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all"
@@ -300,20 +384,24 @@ const AdminApproval = () => {
                       <input
                         type="checkbox"
                         className="w-4 h-4 text-sky-600 border-gray-300 rounded focus:ring-sky-500"
-                        checked={selectedTaskIds.length === filteredTasks.length && filteredTasks.length > 0}
+                        checked={
+                          selectedTaskIds.length === filteredTasks.length &&
+                          filteredTasks.length > 0
+                        }
                         onChange={handleSelectAll}
                         disabled={filteredTasks.length === 0}
                       />
                     </th>
                   )}
+
                   {[
                     { label: "Task No", key: "id" },
                     { label: "Department", key: "department" },
                     { label: "Description", key: "description" },
-                    { label: "Status", key: "taskstatus" },
-                    { label: "Machine", key: "machinename" },
+                    { label: "Status", key: "taskStatus" },
+                    { label: "Machine", key: "machineName" },
                     { label: "Temperature", key: "temperature" },
-                    { label: "Cost", key: "maintenancecost" },
+                    { label: "Cost", key: "maintenanceCost" },
                   ].map((header) => (
                     <th
                       key={header.key}
@@ -329,12 +417,14 @@ const AdminApproval = () => {
                   ))}
                 </tr>
               </thead>
+
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredTasks.map((task) => (
                   <tr
                     key={task.id}
                     className={`hover:bg-gray-50 transition-colors ${
-                      selectedTaskIds.includes(task.id) && activeTab === "Pending"
+                      selectedTaskIds.includes(task.id) &&
+                      activeTab === "Pending"
                         ? "bg-sky-50"
                         : ""
                     }`}
@@ -349,28 +439,35 @@ const AdminApproval = () => {
                         />
                       </td>
                     )}
+
                     <td className="px-6 py-4 text-xs font-medium text-gray-900 whitespace-nowrap">
                       #{task.id}
                     </td>
+
                     <td className="px-6 py-4 text-xs text-gray-500 whitespace-nowrap">
                       {task.department}
                     </td>
+
                     <td className="px-6 py-4 text-xs text-gray-900 max-w-xs">
                       <div className="truncate" title={task.description}>
                         {task.description}
                       </div>
                     </td>
+
                     <td className="px-6 py-4 whitespace-nowrap">
                       {getStatusBadge(task.taskStatus)}
                     </td>
+
                     <td className="px-6 py-4 text-xs text-gray-500 whitespace-nowrap">
                       {task.machineName}
                     </td>
+
                     <td className="px-6 py-4 text-xs text-gray-500 whitespace-nowrap">
                       {task.temperature}
                     </td>
+
                     <td className="px-6 py-4 text-xs font-semibold text-gray-700 whitespace-nowrap">
-                      ${task.maintenanceCost.toFixed(2)}
+                      ${Number(task.maintenanceCost || 0).toFixed(2)}
                     </td>
                   </tr>
                 ))}
@@ -402,38 +499,51 @@ const AdminApproval = () => {
                         onChange={() => handleSelectTask(task.id)}
                       />
                     )}
+
                     <div>
-                      <div className="text-xs text-gray-500 font-medium">Task #{task.id}</div>
+                      <div className="text-xs text-gray-500 font-medium">
+                        Task #{task.id}
+                      </div>
                       <div className="text-xs font-semibold text-gray-900 mt-0.5">
                         {task.machineName}
                       </div>
                     </div>
                   </div>
+
                   {getStatusBadge(task.taskStatus)}
                 </div>
 
                 {/* Department */}
                 <div className="flex items-center text-xs">
-                  <span className="text-gray-500 font-medium w-24">Department:</span>
+                  <span className="text-gray-500 font-medium w-24">
+                    Department:
+                  </span>
                   <span className="text-gray-900">{task.department}</span>
                 </div>
 
                 {/* Description */}
                 <div className="text-xs">
-                  <span className="text-gray-500 font-medium">Description:</span>
+                  <span className="text-gray-500 font-medium">
+                    Description:
+                  </span>
                   <p className="text-gray-900 mt-1">{task.description}</p>
                 </div>
 
                 {/* Details Grid */}
                 <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-100">
                   <div>
-                    <div className="text-xs text-gray-500 font-medium">Temperature</div>
+                    <div className="text-xs text-gray-500 font-medium">
+                      Temperature
+                    </div>
                     <div className="text-xs text-gray-900 font-semibold mt-0.5">
                       {task.temperature}
                     </div>
                   </div>
+
                   <div>
-                    <div className="text-xs text-gray-500 font-medium">Sound Level</div>
+                    <div className="text-xs text-gray-500 font-medium">
+                      Sound Level
+                    </div>
                     <div className="text-xs text-gray-900 font-semibold mt-0.5">
                       {task.soundOfMachine}
                     </div>
@@ -443,11 +553,14 @@ const AdminApproval = () => {
                 {/* Cost and Remarks */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500 font-medium">Maintenance Cost:</span>
+                    <span className="text-xs text-gray-500 font-medium">
+                      Maintenance Cost:
+                    </span>
                     <span className="text-base font-bold text-gray-900">
-                      ${task.maintenanceCost.toFixed(2)}
+                      ${Number(task.maintenanceCost || 0).toFixed(2)}
                     </span>
                   </div>
+
                   <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
                     <span className="font-medium">Remarks:</span> {task.remarks}
                   </div>
@@ -462,6 +575,7 @@ const AdminApproval = () => {
                     <CheckCircle size={16} className="mr-1.5" />
                     Approve
                   </button>
+
                   <button
                     onClick={() => handleRejectTask(task.id)}
                     className="flex-1 inline-flex items-center justify-center px-3 py-2 text-xs font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 active:bg-red-200 transition-colors"
@@ -469,6 +583,7 @@ const AdminApproval = () => {
                     <XCircle size={16} className="mr-1.5" />
                     Reject
                   </button>
+
                   <button className="flex-1 inline-flex items-center justify-center px-3 py-2 text-xs font-medium text-sky-600 bg-sky-50 rounded-lg hover:bg-sky-100 active:bg-sky-200 transition-colors">
                     <Eye size={16} className="mr-1.5" />
                     Details

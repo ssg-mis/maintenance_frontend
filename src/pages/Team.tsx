@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import { Users, Briefcase, Award, Wrench, Plus, X } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { Users, Briefcase, Award, Wrench, Plus, X, Trash2, Loader2 } from "lucide-react";
+import useAuthStore from "../store/authStore";
 
 interface TeamMember {
   id: string;
@@ -11,8 +12,14 @@ interface TeamMember {
 }
 
 const TeamReport = () => {
+  const token = useAuthStore((state) => state.token);
+  const user = useAuthStore((state) => state.user);
   const [selectedPeriod, setSelectedPeriod] = useState("month");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+
   const [formData, setFormData] = useState({
     name: "",
     image: "",
@@ -21,84 +28,110 @@ const TeamReport = () => {
     skills: "",
   });
 
-  // Dummy data for team members
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([
-    {
-      id: "1",
-      name: "Rajesh Kumar",
-      image: "https://i.pravatar.cc/150?img=12",
-      department: "Electrical Maintenance",
-      experience: "8 years",
-      skills: ["Electrical Systems", "PLC Programming", "Troubleshooting"],
-    },
-    {
-      id: "2",
-      name: "Priya Sharma",
-      image: "https://i.pravatar.cc/150?img=47",
-      department: "HVAC Systems",
-      experience: "6 years",
-      skills: ["Air Conditioning", "Ventilation", "Energy Efficiency"],
-    },
-    {
-      id: "3",
-      name: "Amit Patel",
-      image: "https://i.pravatar.cc/150?img=33",
-      department: "Mechanical Systems",
-      experience: "10 years",
-      skills: ["Pumps & Motors", "Hydraulics", "Preventive Maintenance"],
-    },
-    {
-      id: "4",
-      name: "Sneha Reddy",
-      image: "https://i.pravatar.cc/150?img=45",
-      department: "Building Infrastructure",
-      experience: "5 years",
-      skills: ["Civil Repairs", "Plumbing", "Safety Compliance"],
-    },
-    {
-      id: "5",
-      name: "Vikram Singh",
-      image: "https://i.pravatar.cc/150?img=15",
-      department: "Fire & Safety",
-      experience: "7 years",
-      skills: ["Fire Systems", "Safety Audits", "Emergency Response"],
-    },
-    {
-      id: "6",
-      name: "Anita Desai",
-      image: "https://i.pravatar.cc/150?img=32",
-      department: "Equipment Maintenance",
-      experience: "9 years",
-      skills: ["Heavy Machinery", "CNC Machines", "Quality Control"],
-    },
-  ]);
+  const loadTeam = async () => {
+    if (!token) return;
+    try {
+      setLoading(true);
+      const res = await fetch("http://localhost:5000/api/team", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const result = await res.json();
+      if (result.success && Array.isArray(result.data)) {
+        setTeamMembers(
+          result.data.map((m: any) => ({
+            id: String(m.id),
+            name: m.name,
+            image: m.image || `https://i.pravatar.cc/150?img=${(Number(m.id) * 7) % 70 + 1}`,
+            department: m.department || "Maintenance",
+            experience: m.experience || "Not specified",
+            skills: Array.isArray(m.skills) ? m.skills : [],
+          }))
+        );
+      }
+    } catch (err) {
+      console.error("Failed to load team members:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTeam();
+  }, [token]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    const newMember: TeamMember = {
-      id: (teamMembers.length + 1).toString(),
-      name: formData.name,
-      image: formData.image || "https://i.pravatar.cc/150?img=" + Math.floor(Math.random() * 70),
-      department: formData.department,
-      experience: formData.experience,
-      skills: formData.skills.split(",").map(skill => skill.trim()),
-    };
+    if (!token) return;
 
-    setTeamMembers([...teamMembers, newMember]);
-    setFormData({
-      name: "",
-      image: "",
-      department: "",
-      experience: "",
-      skills: "",
-    });
-    setIsModalOpen(false);
+    try {
+      setSubmitting(true);
+      const skillsArray = formData.skills
+        .split(",")
+        .map((skill) => skill.trim())
+        .filter(Boolean);
+
+      const res = await fetch("http://localhost:5000/api/team", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: formData.name.trim(),
+          image: formData.image.trim() || `https://i.pravatar.cc/150?img=${Math.floor(Math.random() * 70) + 1}`,
+          department: formData.department.trim(),
+          experience: formData.experience.trim(),
+          skills: skillsArray,
+        }),
+      });
+
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(result.message || "Failed to add team member");
+      }
+
+      setFormData({
+        name: "",
+        image: "",
+        department: "",
+        experience: "",
+        skills: "",
+      });
+      setIsModalOpen(false);
+      await loadTeam();
+    } catch (err: any) {
+      alert(err.message || "Failed to add team member");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteMember = async (id: string, name: string) => {
+    if (!token) return;
+    if (window.confirm(`Are you sure you want to delete ${name}?`)) {
+      try {
+        const res = await fetch(`http://localhost:5000/api/team/${id}`, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const result = await res.json();
+        if (!res.ok || !result.success) {
+          throw new Error(result.message || "Failed to delete team member");
+        }
+        await loadTeam();
+      } catch (err: any) {
+        alert(err.message || "Failed to delete team member");
+      }
+    }
   };
 
   return (
@@ -156,6 +189,9 @@ const TeamReport = () => {
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Skills
                   </th>
+                  <th className="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -199,6 +235,15 @@ const TeamReport = () => {
                           ))}
                         </div>
                       </td>
+                      <td className="px-6 py-4 text-center">
+                        <button
+                          onClick={() => handleDeleteMember(member.id, member.name)}
+                          className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                          title="Delete member"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -214,16 +259,25 @@ const TeamReport = () => {
                 className="bg-gray-50 rounded-lg p-4 space-y-4 border border-gray-200"
               >
                 {/* Member Header */}
-                <div className="flex items-center gap-3 pb-3 border-b border-gray-200">
-                  <img
-                    src={member.image}
-                    alt={member.name}
-                    className="w-14 h-14 rounded-full object-cover border-2 border-sky-100 flex-shrink-0"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-gray-900 text-sm truncate">{member.name}</p>
-                    <p className="text-xs text-gray-500">Maintenance Technician</p>
+                <div className="flex items-center justify-between pb-3 border-b border-gray-200">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={member.image}
+                      alt={member.name}
+                      className="w-14 h-14 rounded-full object-cover border-2 border-sky-100 flex-shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-gray-900 text-sm truncate">{member.name}</p>
+                      <p className="text-xs text-gray-500">Maintenance Technician</p>
+                    </div>
                   </div>
+                  <button
+                    onClick={() => handleDeleteMember(member.id, member.name)}
+                    className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                    title="Delete member"
+                  >
+                    <Trash2 size={16} />
+                  </button>
                 </div>
 
                 {/* Department */}

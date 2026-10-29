@@ -1,3 +1,108 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark body {
+  background-color: #020617;
+  color: #f8fafc;
+}
+
+/* Global Dark Mode Overrides for full-website consistency */
+html.dark .bg-white {
+  background-color: #0f172a !important;
+}
+
+html.dark .bg-gray-50 {
+  background-color: #020617 !important;
+}
+
+html.dark .bg-gray-100 {
+  background-color: #1e293b !important;
+}
+
+html.dark .border-gray-200,
+html.dark .border-gray-100,
+html.dark .border-gray-300 {
+  border-color: #334155 !important;
+}
+
+html.dark .text-gray-900,
+html.dark .text-gray-800 {
+  color: #f1f5f9 !important;
+}
+
+html.dark .text-gray-700,
+html.dark .text-gray-600 {
+  color: #cbd5e1 !important;
+}
+
+html.dark .text-gray-500,
+html.dark .text-gray-400 {
+  color: #94a3b8 !important;
+}
+
+html.dark input,
+html.dark select,
+html.dark textarea {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+  border-color: #475569 !important;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #64748b !important;
+}
+
+html.dark table thead {
+  background-color: #1e293b !important;
+}
+
+html.dark table thead th {
+  color: #94a3b8 !important;
+  border-color: #334155 !important;
+}
+
+html.dark table tbody tr:hover {
+  background-color: #1e293b !important;
+}
+
+html.dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #334155 !important;
+}
+
+/* Sidebar Theme-Aware Hover States */
+html:not(.dark) nav a:hover:not(.bg-sky-500):not(.complaint-sublink-active) {
+  background-color: #f0f9ff !important;
+  color: #0284c7 !important;
+}
+
+html.dark nav a:hover:not(.bg-sky-500):not(.complaint-sublink-active) {
+  background-color: rgba(30, 41, 59, 0.85) !important;
+  color: #38bdf8 !important;
+}
+
+/* Complaint Tracker Submenu Active Link Style matching reference screenshot */
+.complaint-sublink-active {
+  background-color: #2563eb !important;
+  color: #ffffff !important;
+}
+.complaint-sublink-active span,
+.complaint-sublink-active svg {
+  color: #ffffff !important;
+}
+.complaint-sublink-active:hover {
+  background-color: #1d4ed8 !important;
+  color: #ffffff !important;
+}
+
+/* Smooth transition for theme change */
+html, body, header, nav, aside, main, footer, div, table, tr, th, td, button, input, select, textarea {
+  transition-property: background-color, border-color, color;
+  transition-duration: 200ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
